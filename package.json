@@ -1,0 +1,26 @@
+{
+  "name": "dms-workspace",
+  "private": true,
+  "packageManager": "npm@11.17.0",
+  "workspaces": [
+    "apps/dms-console/frontend",
+    "packages/*"
+  ],
+  "overrides": {
+    "next": {
+      "postcss": "8.5.16"
+    }
+  },
+  "scripts": {
+    "dev": "npm run dev:dms:frontend",
+    "dev:dms:frontend": "npm --workspace @dms/console-frontend run dev",
+    "build:dms:frontend": "npm --workspace @dms/console-frontend run build",
+    "lint:dms:frontend": "npm --workspace @dms/console-frontend run lint",
+    "typecheck:dms:frontend": "npm --workspace @dms/console-frontend run typecheck",
+    "dev:dms:backend": "cd apps/dms-console/backend && .venv/bin/python -m uvicorn app.main:app --port 8000",
+    "dev:dms:backend:reload": "cd apps/dms-console/backend && .venv/bin/python -m uvicorn app.main:app --reload --port 8000",
+    "test:dms:backend": "cd apps/dms-console/backend && .venv/bin/python -m pytest",
+    "lint:dms:backend": "cd apps/dms-console/backend && .venv/bin/python -m ruff check .",
+    "openapi:dms:backend": "cd apps/dms-console/backend && .venv/bin/python -m app.export_openapi ../contracts/openapi/backend.json"
+  }
+}

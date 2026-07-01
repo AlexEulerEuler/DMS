@@ -1,0 +1,29 @@
+.DS_Store
+
+# Dependencies
+node_modules/
+.venv/
+venv/
+
+# Build outputs
+dist/
+build/
+.next/
+coverage/
+*.tsbuildinfo
+
+# Python cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Tool cache
+.turbo/
+
+# Runtime and local environment
+.env
+.env.*
+!.env.example
+*.log

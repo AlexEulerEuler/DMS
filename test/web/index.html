@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Medical MyData RAG Analysis</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div>
+          <h1>RAG Analysis</h1>
+          <p id="session-count">0 sessions</p>
+        </div>
+        <button id="new-session" class="icon-button" type="button" title="새 대화">+</button>
+      </div>
+      <div id="session-list" class="session-list"></div>
+    </aside>
+
+    <main class="workspace">
+      <header class="toolbar">
+        <div class="status-group">
+          <strong id="active-title">New analysis</strong>
+          <span id="save-status">ready</span>
+        </div>
+        <div class="controls">
+          <select id="patient-select" title="HUB 환자">
+            <option value="5030">5030</option>
+            <option value="5199">5199</option>
+            <option value="5337">5337</option>
+          </select>
+          <button id="build-hub-index" type="button" title="HUB API로 환자 인덱스 만들기">Build HUB</button>
+          <select id="mode-select" title="응답 모드">
+            <option value="local">Local RAG</option>
+            <option value="upstage">Upstage</option>
+          </select>
+          <select id="category-select" title="카테고리 필터">
+            <option value="">All</option>
+            <option value="treatment">Treatment</option>
+            <option value="checkup">Checkup</option>
+            <option value="medication">Medication</option>
+            <option value="immunization">Immunization</option>
+            <option value="glucose_report">Glucose</option>
+            <option value="holter_report">Holter</option>
+            <option value="microbiome">Microbiome</option>
+            <option value="genomic_vcf">VCF</option>
+          </select>
+          <input id="top-k" type="number" min="1" max="20" value="5" title="Top K">
+        </div>
+      </header>
+
+      <section id="messages" class="messages"></section>
+
+      <form id="chat-form" class="composer">
+        <textarea id="message-input" rows="3" placeholder="질문을 입력하세요"></textarea>
+        <button id="send-button" type="submit">Send</button>
+      </form>
+    </main>
+
+    <aside class="evidence-panel">
+      <header>
+        <h2>Evidence</h2>
+        <span id="index-status">index</span>
+      </header>
+      <div id="evidence-list" class="evidence-list"></div>
+    </aside>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

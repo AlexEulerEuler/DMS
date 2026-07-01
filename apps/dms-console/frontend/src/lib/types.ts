@@ -266,6 +266,8 @@ export interface WorkItem {
   // Agent loop (runtime.md §4): the agent that claimed this work item, and when.
   executor?: string | null;
   claimedAt?: string | null;
+  // Decomposition (runtime.md §8): parent work item when split from a larger goal.
+  parentId?: string | null;
 }
 
 // ---------------------------------------------------------------------------

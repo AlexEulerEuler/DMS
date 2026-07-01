@@ -45,6 +45,8 @@ class WorkItemCreateRequest(BaseModel):
     description: str | None = None
     linkedIssue: str | None = None
     linkedAgent: str | None = None
+    # Decomposition: when an agent splits a goal, the child references its parent.
+    parentId: str | None = None
 
 
 class WorkItemUpdateRequest(BaseModel):

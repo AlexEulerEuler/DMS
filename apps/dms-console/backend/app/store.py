@@ -257,6 +257,7 @@ def _work_to_schema(row: WorkRow) -> WorkItem:
         linkedAgent=row.linked_agent,
         executor=row.executor,
         claimedAt=_iso(row.claimed_at),
+        parentId=row.parent_id,
     )
 
 
@@ -568,6 +569,8 @@ def create_work(payload: WorkItemCreateRequest) -> WorkItem:
     _require_title(payload.title, "작업명")
     _validate_work_dates(payload.startDate, payload.endDate)
     with session_scope() as session:
+        if payload.parentId is not None and session.get(WorkRow, payload.parentId) is None:
+            raise AppError(404, "not_found", "상위 작업을 찾을 수 없습니다.")
         row = WorkRow(
             id=next_id(session, "work"),
             title=payload.title,
@@ -578,6 +581,7 @@ def create_work(payload: WorkItemCreateRequest) -> WorkItem:
             description=payload.description,
             linked_issue=payload.linkedIssue,
             linked_agent=payload.linkedAgent,
+            parent_id=payload.parentId,
         )
         session.add(row)
         session.flush()

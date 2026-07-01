@@ -206,6 +206,8 @@ class WorkItem(BaseModel):
     # Agent loop (runtime.md §4): the agent that claimed this work item, and when.
     executor: str | None = None
     claimedAt: DateTimeString | None = None
+    # Decomposition (runtime.md §8): parent work item when split from a larger goal.
+    parentId: str | None = None
 
 
 # ---------------------------------------------------------------------------

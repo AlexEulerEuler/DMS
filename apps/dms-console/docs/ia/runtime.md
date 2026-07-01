@@ -70,8 +70,44 @@
 | `DMS_STORAGE_DIR` | `./storage` | 업로드/산출 파일 저장 |
 | `DMS_SEED` | `1`(dev) | 빈 DB 시드 여부 |
 | `DMS_API_TOKEN` | (없음) | 설정 시 API 토큰 게이트 |
+| `DMS_DOCS_DIR` | (없음) | 에이전트 루프가 읽는 docs 루트(컨테이너용) |
+| `DMS_WORKER_CMD` | (없음) | 오케스트레이터가 작업당 실행할 워커 명령(코딩 에이전트) |
 | `DMS_GITHUB_TOKEN/OWNER/REPO` | (없음) | 기존 GitHub 프록시 |
 
 ## 7. 구현 순서·검증
 
 Phase 1→5 순차. 각 Phase: 구현 → 테스트 → 빌드/린트/타입체크 → 런타임 확인 → 커밋·푸시. 핵심 회귀 테스트: **재시작 후 데이터 유지**, 업로드→생성→다운로드, 에이전트 claim/report 왕복.
+
+## 8. 자율 오케스트레이션 (Autonomous Orchestration) — Phase 6
+
+목표: **사람은 기획·문서만, 나머지는 에이전트가 자율로.** §4의 에이전트 툴 층(MCP) 위에 "일을 스스로 집어 돌리는" 구동 층을 얹는다. 재설계가 아니라 확장이다.
+
+### 8.1 역할 분리
+
+- **DMS = 조율 substrate(수동적)**: 상태·문서·작업을 저장하고 MCP/REST 툴로 노출. 스스로 무언가를 하지 않는다.
+- **오케스트레이터 = 구동기(능동적)**: 미착수 작업을 계속 가져와 워커에 위임하는 루프. `app/orchestrator.py`.
+- **워커 = 실제 실행자**: 작업을 실제로 수행. 보통 외부 **코딩 에이전트**(예: DMS MCP를 붙인 Claude Code). DMS 범위 밖의 실행 주체이며 교체 가능(pluggable).
+
+### 8.2 분해(decomposition)
+
+에이전트가 큰 목표를 하위 작업으로 쪼갤 수 있도록 MCP에 생성 툴을 노출한다: `create_work`, `create_task`, `split_work`(부모에 자식 작업 N개 생성). WorkItem에 `parentId`를 추가해 분해 트리를 추적한다.
+
+### 8.3 자율 루프
+
+```text
+orchestrator.run_once():
+  for item in list_open_work(unclaimed_only=True) where status == planned:
+    claim_work(item, executor)        # 원자적 — 다른 실행이 이미 잡았으면 skip(409)
+    dispatch(worker, item)            # 워커에 위임
+      · DMS_WORKER_CMD 미설정 → 내장 데모 워커(모의: review로 보고)
+      · 설정 → 서브프로세스 실행(env: DMS_WORK_ID/EXECUTOR/WORK_JSON), 워커가 API/MCP로 보고
+run(): run_once를 반복(--once 1회 / --poll N초 폴링). 재클레임 없음 → 중복 처리 없음.
+```
+
+실행: `python -m app.orchestrator --once` 또는 `--poll 5`. 실제 코딩 에이전트 연결은 `DMS_WORKER_CMD`에 "작업 컨텍스트를 받아 개발하고 report_work로 보고하는" 명령을 지정하면 된다.
+
+### 8.4 범위 경계(정직)
+
+- DMS는 코드를 **직접 실행하지 않는다** — 레포/CI/코드 작성은 워커(코딩 에이전트)의 몫이다. DMS는 "무엇을·누가·어디까지"의 조율만 담당한다.
+- 데모 워커는 사이클 검증용(모의)이며, 실전에서는 실제 코딩 에이전트로 교체한다.
+- 향후: 워커 결과 검증(테스트/CI 게이트), 실패 재시도·백오프, 병렬 워커 풀, 승인 게이트.

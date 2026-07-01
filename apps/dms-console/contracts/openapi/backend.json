@@ -2494,6 +2494,17 @@
               }
             ],
             "title": "Claimedat"
+          },
+          "parentId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parentid"
           }
         },
         "type": "object",
@@ -2584,6 +2595,17 @@
               }
             ],
             "title": "Linkedagent"
+          },
+          "parentId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parentid"
           }
         },
         "type": "object",

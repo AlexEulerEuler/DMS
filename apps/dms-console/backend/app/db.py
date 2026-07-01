@@ -45,13 +45,35 @@ def session_scope() -> Iterator[Session]:
 
 
 def init_db() -> None:
-    """Create tables (idempotent) and seed an empty DB when enabled."""
+    """Create tables (idempotent), apply light column migrations, and seed an
+    empty DB when enabled."""
     # Import models so they register on Base.metadata before create_all.
     from app import models_db  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
+    _ensure_columns()
 
     if settings.seed:
         from app.seed import seed_if_empty
 
         seed_if_empty()
+
+
+def _ensure_columns() -> None:
+    """Add columns introduced after a DB was first created (SQLite has no schema
+    migrations here). Keeps existing dms.db files usable across upgrades."""
+    from sqlalchemy import inspect, text
+
+    from app import models_db
+
+    inspector = inspect(engine)
+    with engine.begin() as conn:
+        for table in Base.metadata.sorted_tables:
+            if not inspector.has_table(table.name):
+                continue
+            existing = {col["name"] for col in inspector.get_columns(table.name)}
+            for column in table.columns:
+                if column.name not in existing:
+                    col_type = column.type.compile(dialect=engine.dialect)
+                    conn.execute(text(f'ALTER TABLE "{table.name}" ADD COLUMN "{column.name}" {col_type}'))
+    _ = models_db  # referenced to keep the import meaningful

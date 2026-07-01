@@ -23,6 +23,7 @@
     "lint:dms:backend": "cd apps/dms-console/backend && .venv/bin/python -m ruff check .",
     "openapi:dms:backend": "cd apps/dms-console/backend && .venv/bin/python -m app.export_openapi ../contracts/openapi/backend.json",
     "cli:dms:generate": "cd apps/dms-console/backend && .venv/bin/python -m app.cli generate",
-    "mcp:dms": "cd apps/dms-console/backend && .venv/bin/python -m app.mcp_server"
+    "mcp:dms": "cd apps/dms-console/backend && .venv/bin/python -m app.mcp_server",
+    "orchestrator:dms": "cd apps/dms-console/backend && .venv/bin/python -m app.orchestrator"
   }
 }

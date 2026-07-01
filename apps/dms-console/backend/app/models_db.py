@@ -50,6 +50,8 @@ class WorkRow(Base):
     # Agent loop (runtime.md §4): who claimed this work item and when.
     executor: Mapped[str | None] = mapped_column(String, nullable=True)
     claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Decomposition (runtime.md §8): parent work item when an agent splits a goal.
+    parent_id: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 

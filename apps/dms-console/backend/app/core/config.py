@@ -13,6 +13,14 @@ class Settings(BaseSettings):
         ]
     )
 
+    # GitHub proxy (README §6, api-contract.md §10.2). Single-user server credentials.
+    # When token/owner/repo are all set, Issues are proxied to the real GitHub REST API;
+    # otherwise an in-memory mock is used so the console works without external setup.
+    github_token: str | None = None
+    github_owner: str | None = None
+    github_repo: str | None = None
+    github_api_url: str = "https://api.github.com"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_prefix="DMS_",

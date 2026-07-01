@@ -5,12 +5,12 @@ description = "FastAPI backend for the DMS console."
 requires-python = ">=3.11"
 dependencies = [
   "fastapi[standard]>=0.115.0",
-  "pydantic-settings>=2.7.0"
+  "pydantic-settings>=2.7.0",
+  "httpx>=0.27.0"
 ]
 
 [project.optional-dependencies]
 dev = [
-  "httpx>=0.27.0",
   "pytest>=8.0.0",
   "ruff>=0.8.0"
 ]
@@ -20,8 +20,12 @@ pythonpath = ["."]
 testpaths = ["tests"]
 
 [tool.ruff]
-line-length = 100
+# 120 (not the 79/100 ASCII default): seed data and docstrings carry Korean
+# UI copy, which runs longer per unit of meaning than English at 100 cols.
+line-length = 120
 target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+# B008: FastAPI's Query()/Depends() defaults are the idiomatic pattern, not a real footgun.
+ignore = ["B008"]

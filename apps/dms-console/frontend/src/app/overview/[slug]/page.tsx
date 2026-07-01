@@ -271,7 +271,7 @@ export default function OverviewDocPage() {
     <div>
       <PageHeader title={doc.title} description={description} />
       {hasContent ? <DocContent content={doc.content} /> : <EmptyDocState slug={slug} />}
-      {isData ? <InputsPanel /> : null}
+      {isData ? <InputsPanel onGenerated={reload} /> : null}
       {isData && outputs ? <DownloadList outputs={outputs} /> : null}
     </div>
   );

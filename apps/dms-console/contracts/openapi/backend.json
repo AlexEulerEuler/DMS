@@ -1228,6 +1228,56 @@
         }
       }
     },
+    "/api/pipeline/run": {
+      "post": {
+        "tags": [
+          "pipeline"
+        ],
+        "summary": "Run",
+        "operationId": "run_api_pipeline_run_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/PipelineRunRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Run Api Pipeline Run Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/": {
       "get": {
         "tags": [
@@ -1669,6 +1719,28 @@
           "htmlUrl"
         ],
         "title": "IssueView"
+      },
+      "PipelineRunRequest": {
+        "properties": {
+          "confirm": {
+            "type": "boolean",
+            "title": "Confirm",
+            "default": true
+          },
+          "formats": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Formats",
+            "default": [
+              "json",
+              "xlsx"
+            ]
+          }
+        },
+        "type": "object",
+        "title": "PipelineRunRequest"
       },
       "Priority": {
         "type": "string",

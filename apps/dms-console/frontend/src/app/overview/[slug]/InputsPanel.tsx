@@ -4,7 +4,8 @@ import { useRef, useState } from "react";
 
 import { Button } from "@/components/Button";
 import { ErrorState, LoadingSkeleton } from "@/components/StateViews";
-import { deleteInput, errorMessage, listInputs, uploadInput } from "@/lib/api-client";
+import { deleteInput, errorMessage, listInputs, runPipeline, uploadInput } from "@/lib/api-client";
+import type { PipelineRunSummary } from "@/lib/api-client";
 import { useAsyncData } from "@/lib/hooks";
 import { formatDate } from "@/lib/format";
 import type { InputSourceType, InputsResponse } from "@/lib/types";
@@ -23,10 +24,27 @@ const GROUPS: GroupDef[] = [
 
 const muted: React.CSSProperties = { color: "var(--color-text-muted)", fontSize: "var(--font-size-caption)" };
 
-export function InputsPanel() {
+export function InputsPanel({ onGenerated }: { onGenerated?: () => void }) {
   const { state, reload } = useAsyncData<InputsResponse>(listInputs, []);
   const [busyType, setBusyType] = useState<InputSourceType | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [result, setResult] = useState<PipelineRunSummary | null>(null);
+
+  async function handleGenerate() {
+    setGenerating(true);
+    setError(null);
+    setResult(null);
+    try {
+      const summary = await runPipeline({ confirm: true, formats: ["json", "xlsx"] });
+      setResult(summary);
+      onGenerated?.();
+    } catch (genError) {
+      setError(errorMessage(genError));
+    } finally {
+      setGenerating(false);
+    }
+  }
 
   async function handleUpload(type: InputSourceType, file: File | undefined) {
     if (!file) return;
@@ -56,18 +74,42 @@ export function InputsPanel() {
 
   return (
     <section style={{ marginBottom: "var(--space-8)" }}>
-      <h3
+      <div
         style={{
-          fontSize: "var(--font-size-section)",
-          fontWeight: "var(--font-weight-semibold)",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          gap: "var(--space-3)",
           marginBottom: "var(--space-2)",
         }}
       >
-        입력 문서 업로드
-      </h3>
+        <h3 style={{ fontSize: "var(--font-size-section)", fontWeight: "var(--font-weight-semibold)" }}>
+          입력 문서 업로드
+        </h3>
+        <Button variant="primary" onClick={handleGenerate} disabled={generating}>
+          {generating ? "생성 중…" : "파이프라인 생성 실행"}
+        </Button>
+      </div>
       <p style={{ ...muted, marginBottom: "var(--space-4)" }}>
-        입력 3종을 업로드하면 파이프라인 생성의 근거가 됩니다.
+        입력 3종을 업로드하고 “생성 실행”을 누르면 표준 목록·생성 일정·내보내기 파일이 산출됩니다.
       </p>
+
+      {result ? (
+        <p
+          role="status"
+          style={{
+            marginBottom: "var(--space-3)",
+            padding: "var(--space-2) var(--space-3)",
+            background: "var(--color-primary-tint)",
+            color: "var(--color-primary)",
+            borderRadius: "var(--radius-sm)",
+            fontSize: "var(--font-size-caption)",
+          }}
+        >
+          생성 완료: 표준 목록 {result.version} · 항목 {result.item_count}개(매칭 {result.matched_count} · 신규{" "}
+          {result.new_count}) · 마일스톤 {result.milestone_count} · 내보내기 {result.export_ids.length}건
+        </p>
+      ) : null}
 
       {error ? (
         <p role="alert" style={{ color: "var(--color-error)", marginBottom: "var(--space-3)" }}>

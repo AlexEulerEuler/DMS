@@ -127,6 +127,22 @@ export function deleteInput(id: string): Promise<void> {
   return request(`/inputs/${id}`, { method: "DELETE" });
 }
 
+export interface PipelineRunSummary {
+  master_list_id: string;
+  version: string;
+  item_count: number;
+  matched_count: number;
+  new_count: number;
+  schedule_id: string | null;
+  milestone_count: number;
+  export_ids: string[];
+  document_count: number;
+}
+
+export function runPipeline(payload: { confirm?: boolean; formats?: string[] } = {}): Promise<PipelineRunSummary> {
+  return request("/pipeline/run", { method: "POST", body: JSON.stringify(payload) });
+}
+
 // ---------------------------------------------------------------------------
 // Task (IA tree)
 // ---------------------------------------------------------------------------

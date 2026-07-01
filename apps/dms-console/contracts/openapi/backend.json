@@ -1116,6 +1116,118 @@
         }
       }
     },
+    "/api/inputs": {
+      "get": {
+        "tags": [
+          "inputs"
+        ],
+        "summary": "List Inputs",
+        "operationId": "list_inputs_api_inputs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response List Inputs Api Inputs Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/inputs/{source_type}": {
+      "post": {
+        "tags": [
+          "inputs"
+        ],
+        "summary": "Upload Input",
+        "operationId": "upload_input_api_inputs__source_type__post",
+        "parameters": [
+          {
+            "name": "source_type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Source Type"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_input_api_inputs__source_type__post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Upload Input Api Inputs  Source Type  Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/inputs/{input_id}": {
+      "delete": {
+        "tags": [
+          "inputs"
+        ],
+        "summary": "Delete Input",
+        "operationId": "delete_input_api_inputs__input_id__delete",
+        "parameters": [
+          {
+            "name": "input_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Input Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/": {
       "get": {
         "tags": [
@@ -1353,6 +1465,20 @@
         },
         "type": "object",
         "title": "AgentUpdateRequest"
+      },
+      "Body_upload_input_api_inputs__source_type__post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_input_api_inputs__source_type__post"
       },
       "CommonStatus": {
         "type": "string",

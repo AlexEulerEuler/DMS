@@ -147,6 +147,43 @@ export interface OverviewOutputs {
 }
 
 // ---------------------------------------------------------------------------
+// Pipeline inputs (runtime.md §2)
+// ---------------------------------------------------------------------------
+
+export type InputSourceType = "document" | "master-list" | "baseline";
+
+export interface SourceDocument {
+  id: string;
+  projectId: string;
+  fileName: string;
+  fileType?: string | null;
+  uploadedAt?: string | null;
+  parsedStatus?: ParsedStatus | null;
+}
+
+export interface ExistingMasterListInput {
+  id: string;
+  projectId: string;
+  fileName?: string | null;
+  version?: string | null;
+  itemCount?: number | null;
+}
+
+export interface BaselineScheduleInput {
+  id: string;
+  projectId: string;
+  fileName?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+}
+
+export interface InputsResponse {
+  documents: SourceDocument[];
+  masterLists: ExistingMasterListInput[];
+  baselines: BaselineScheduleInput[];
+}
+
+// ---------------------------------------------------------------------------
 // TaskIA
 // ---------------------------------------------------------------------------
 

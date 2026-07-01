@@ -15,11 +15,14 @@ from app.core.errors import AppError
 from app.db import session_scope
 from app.models_db import (
     AgentRow,
+    BaselineScheduleRow,
+    ExistingMasterListRow,
     ExportFileRow,
     GeneratedScheduleRow,
     IssueOverlayRow,
     MasterListRow,
     SequenceRow,
+    SourceDocumentRow,
     TaskRow,
     WorkRow,
 )
@@ -34,6 +37,8 @@ from app.schemas.common import (
 )
 from app.schemas.models import (
     Agent,
+    BaselineSchedule,
+    ExistingMasterList,
     ExportFile,
     GeneratedSchedule,
     GitHubIssue,
@@ -45,6 +50,7 @@ from app.schemas.models import (
     PipelineOutput,
     PipelineSummary,
     ProjectMeta,
+    SourceDocument,
     TaskIA,
     WBSItem,
     WorkflowStep,
@@ -780,3 +786,148 @@ def get_download(kind: str, item_id: str) -> tuple[str, str] | tuple[str, bytes]
                         return filename, handle.read()
             return filename, _export_to_schema(row).model_dump_json(indent=2)
         return None
+
+
+# ---------------------------------------------------------------------------
+# Pipeline inputs — ingestion (docs/ia/runtime.md §2)
+# ---------------------------------------------------------------------------
+
+INPUT_TYPES = ("document", "master-list", "baseline")
+
+
+def _ext(file_name: str) -> str | None:
+    _, dot, ext = file_name.rpartition(".")
+    return ext.lower() if dot else None
+
+
+def _source_doc_to_schema(row: SourceDocumentRow) -> SourceDocument:
+    return SourceDocument(
+        id=row.id,
+        projectId=row.project_id,
+        fileName=row.file_name,
+        fileType=row.file_type,
+        uploadedAt=_iso(row.uploaded_at),
+        parsedStatus=row.parsed_status,
+    )
+
+
+def _existing_ml_to_schema(row: ExistingMasterListRow) -> ExistingMasterList:
+    return ExistingMasterList(
+        id=row.id,
+        projectId=row.project_id,
+        fileName=row.file_name,
+        version=row.version,
+        itemCount=row.item_count,
+    )
+
+
+def _baseline_to_schema(row: BaselineScheduleRow) -> BaselineSchedule:
+    return BaselineSchedule(
+        id=row.id,
+        projectId=row.project_id,
+        fileName=row.file_name,
+        startDate=row.start_date,
+        endDate=row.end_date,
+    )
+
+
+def create_input(source_type: str, file_name: str, content: bytes):
+    """Store an uploaded input file + persist its metadata (runtime.md §2)."""
+    from app.storage import save_file
+
+    if source_type not in INPUT_TYPES:
+        raise AppError(400, "validation_error", "알 수 없는 입력 유형입니다.")
+    if not file_name or not file_name.strip():
+        raise AppError(400, "validation_error", "파일명이 필요합니다.")
+
+    with session_scope() as session:
+        if source_type == "document":
+            file_id = next_id(session, "src")
+            path = save_file("documents", file_id, file_name, content)
+            row = SourceDocumentRow(
+                id=file_id,
+                project_id=PROJECT_ID,
+                file_name=file_name,
+                file_type=_ext(file_name),
+                stored_path=path,
+                parsed_status="pending",
+            )
+            session.add(row)
+            session.flush()
+            return _source_doc_to_schema(row)
+        if source_type == "master-list":
+            file_id = next_id(session, "eml")
+            path = save_file("master-lists", file_id, file_name, content)
+            item_count = _count_lines(content)
+            row = ExistingMasterListRow(
+                id=file_id,
+                project_id=PROJECT_ID,
+                file_name=file_name,
+                item_count=item_count,
+                stored_path=path,
+            )
+            session.add(row)
+            session.flush()
+            return _existing_ml_to_schema(row)
+        # baseline
+        file_id = next_id(session, "bs")
+        path = save_file("baselines", file_id, file_name, content)
+        start, end = _parse_baseline_dates(content)
+        row = BaselineScheduleRow(
+            id=file_id,
+            project_id=PROJECT_ID,
+            file_name=file_name,
+            start_date=start,
+            end_date=end,
+            stored_path=path,
+        )
+        session.add(row)
+        session.flush()
+        return _baseline_to_schema(row)
+
+
+def _count_lines(content: bytes) -> int:
+    text = content.decode("utf-8", errors="ignore")
+    return sum(1 for line in text.splitlines() if line.strip())
+
+
+def _parse_baseline_dates(content: bytes) -> tuple[str | None, str | None]:
+    """Best-effort: pull the min/max YYYY-MM-DD found in the baseline file."""
+    import re
+
+    text = content.decode("utf-8", errors="ignore")
+    dates = sorted(re.findall(r"\d{4}-\d{2}-\d{2}", text))
+    if not dates:
+        return None, None
+    return dates[0], dates[-1]
+
+
+def list_inputs() -> dict:
+    with session_scope() as session:
+        docs = list(
+            session.execute(select(SourceDocumentRow).order_by(SourceDocumentRow.uploaded_at.desc())).scalars()
+        )
+        masters = list(
+            session.execute(select(ExistingMasterListRow).order_by(ExistingMasterListRow.uploaded_at.desc())).scalars()
+        )
+        baselines = list(
+            session.execute(select(BaselineScheduleRow).order_by(BaselineScheduleRow.uploaded_at.desc())).scalars()
+        )
+        return {
+            "documents": [_source_doc_to_schema(r) for r in docs],
+            "masterLists": [_existing_ml_to_schema(r) for r in masters],
+            "baselines": [_baseline_to_schema(r) for r in baselines],
+        }
+
+
+def delete_input(input_id: str) -> None:
+    from app.storage import delete_file
+
+    with session_scope() as session:
+        for row_cls in (SourceDocumentRow, ExistingMasterListRow, BaselineScheduleRow):
+            row = session.get(row_cls, input_id)
+            if row is not None:
+                delete_file(row.stored_path)
+                session.delete(row)
+                return
+        raise AppError(404, "not_found", "해당 입력을 찾을 수 없습니다.")

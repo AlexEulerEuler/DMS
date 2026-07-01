@@ -9,12 +9,15 @@ import type {
   Agent,
   AgentStatus,
   CommonStatus,
+  InputSourceType,
+  InputsResponse,
   OverviewDoc,
   OverviewOutputs,
   Page,
   PipelineSummary,
   ProjectMeta,
   Priority,
+  SourceDocument,
   TaskIA,
   TaskNodeType,
   WbsResponse,
@@ -94,6 +97,34 @@ export function getOverviewOutputs(): Promise<OverviewOutputs> {
 
 export function resolveDownloadUrl(downloadUrl: string): string {
   return `${API_BASE_URL}${downloadUrl}`;
+}
+
+// ---------------------------------------------------------------------------
+// Inputs (document ingestion, runtime.md §2)
+// ---------------------------------------------------------------------------
+
+export function listInputs(): Promise<InputsResponse> {
+  return request("/inputs");
+}
+
+export async function uploadInput(sourceType: InputSourceType, file: File): Promise<SourceDocument> {
+  const form = new FormData();
+  form.append("file", file);
+  // NOTE: no Content-Type header — the browser sets the multipart boundary.
+  const response = await fetch(`${API_BASE_URL}/api/inputs/${sourceType}`, {
+    method: "POST",
+    body: form,
+    cache: "no-store",
+  });
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new ApiError(response.status, body?.error?.code ?? "internal_error", body?.error?.message ?? "업로드 실패");
+  }
+  return body as SourceDocument;
+}
+
+export function deleteInput(id: string): Promise<void> {
+  return request(`/inputs/${id}`, { method: "DELETE" });
 }
 
 // ---------------------------------------------------------------------------

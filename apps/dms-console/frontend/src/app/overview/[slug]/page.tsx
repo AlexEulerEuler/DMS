@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import type { ReactNode } from "react";
 
 import { Button } from "@/components/Button";
+import { InputsPanel } from "./InputsPanel";
 import { OVERVIEW_DOCS } from "@/components/nav-config";
 import { PageHeader } from "@/components/PageHeader";
 import { EmptyState, ErrorState, LoadingSkeleton, NotFound } from "@/components/StateViews";
@@ -270,6 +271,7 @@ export default function OverviewDocPage() {
     <div>
       <PageHeader title={doc.title} description={description} />
       {hasContent ? <DocContent content={doc.content} /> : <EmptyDocState slug={slug} />}
+      {isData ? <InputsPanel /> : null}
       {isData && outputs ? <DownloadList outputs={outputs} /> : null}
     </div>
   );

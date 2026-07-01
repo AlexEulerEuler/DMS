@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     seed: bool = True
     # Optional API token gate (runtime.md §5). When set, requests need Bearer auth.
     api_token: str | None = None
+    # Docs root the agent loop reads from. Defaults to apps/dms-console/docs;
+    # override in containers (e.g. /docs) where the source tree layout differs.
+    docs_dir: str | None = None
 
     @property
     def database_url(self) -> str:

@@ -41,6 +41,13 @@ export class ApiError extends Error {
 
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+// Optional shared-secret gate (runtime.md §5): when set, every API call sends it.
+const API_TOKEN = process.env.NEXT_PUBLIC_DMS_API_TOKEN;
+
+function authHeaders(): Record<string, string> {
+  return API_TOKEN ? { Authorization: `Bearer ${API_TOKEN}` } : {};
+}
+
 export function errorMessage(error: unknown): string {
   if (error instanceof ApiError) return error.message;
   return "알 수 없는 오류가 발생했습니다.";
@@ -60,7 +67,7 @@ function toQuery(params: Record<string, QueryValue>): string {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}/api${path}`, {
     ...init,
-    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+    headers: { "Content-Type": "application/json", ...authHeaders(), ...(init?.headers ?? {}) },
     cache: "no-store",
   });
 
@@ -99,6 +106,24 @@ export function resolveDownloadUrl(downloadUrl: string): string {
   return `${API_BASE_URL}${downloadUrl}`;
 }
 
+/** Fetch a file (with the auth header when the gate is on) and save it via a blob,
+ * so downloads work whether or not DMS_API_TOKEN is set. */
+export async function downloadFile(downloadUrl: string, filename: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}${downloadUrl}`, { headers: authHeaders(), cache: "no-store" });
+  if (!response.ok) {
+    throw new ApiError(response.status, "download_error", "다운로드에 실패했습니다.");
+  }
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
 // ---------------------------------------------------------------------------
 // Inputs (document ingestion, runtime.md §2)
 // ---------------------------------------------------------------------------
@@ -114,6 +139,7 @@ export async function uploadInput(sourceType: InputSourceType, file: File): Prom
   const response = await fetch(`${API_BASE_URL}/api/inputs/${sourceType}`, {
     method: "POST",
     body: form,
+    headers: authHeaders(),
     cache: "no-store",
   });
   const body = await response.json().catch(() => null);

@@ -1,0 +1,7 @@
+# Runtime data (docs/ia/runtime.md §1-2) — created wherever the backend is launched.
+dms.db
+dms.db-journal
+storage/
+
+# Local tooling
+.claude/

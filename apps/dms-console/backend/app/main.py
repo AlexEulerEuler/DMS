@@ -1,12 +1,16 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.api.router import api_router
 from app.core.config import settings
 from app.core.errors import register_exception_handlers
 from app.db import init_db
+
+# Endpoints reachable without the token even when the gate is on.
+_AUTH_EXEMPT = {"/api/health"}
 
 
 @asynccontextmanager
@@ -33,6 +37,21 @@ def create_app() -> FastAPI:
     )
 
     register_exception_handlers(app)
+
+    @app.middleware("http")
+    async def auth_gate(request: Request, call_next):
+        # Optional shared-secret gate (runtime.md §5). When DMS_API_TOKEN is set,
+        # /api/* (except health) requires `Authorization: Bearer <token>`. CORS
+        # preflight (OPTIONS) always passes. Multi-user auth is future work.
+        if settings.api_token and request.method != "OPTIONS":
+            path = request.url.path
+            if path.startswith("/api") and path not in _AUTH_EXEMPT:
+                if request.headers.get("authorization") != f"Bearer {settings.api_token}":
+                    return JSONResponse(
+                        status_code=401,
+                        content={"error": {"code": "unauthorized", "message": "인증 토큰이 필요합니다."}},
+                    )
+        return await call_next(request)
 
     app.include_router(api_router, prefix="/api")
 

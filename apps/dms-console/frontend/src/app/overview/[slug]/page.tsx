@@ -11,10 +11,10 @@ import { PageHeader } from "@/components/PageHeader";
 import { EmptyState, ErrorState, LoadingSkeleton, NotFound } from "@/components/StateViews";
 import {
   ApiError,
+  downloadFile,
   errorMessage,
   getOverviewDoc,
   getOverviewOutputs,
-  resolveDownloadUrl,
 } from "@/lib/api-client";
 import { formatDate } from "@/lib/format";
 import { useAsyncData } from "@/lib/hooks";
@@ -113,6 +113,7 @@ interface DownloadRow {
   format?: string;
   createdAt?: string;
   downloadUrl?: string;
+  filename: string;
 }
 
 function DownloadGroup({ title, rows }: { title: string; rows: DownloadRow[] }) {
@@ -165,17 +166,15 @@ function DownloadGroup({ title, rows }: { title: string; rows: DownloadRow[] }) 
                 ) : null}
               </div>
               {row.downloadUrl ? (
-                <a
-                  href={resolveDownloadUrl(row.downloadUrl)}
-                  download
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ textDecoration: "none" }}
+                <Button
+                  variant="secondary"
+                  type="button"
+                  onClick={() => {
+                    void downloadFile(row.downloadUrl as string, row.filename);
+                  }}
                 >
-                  <Button variant="secondary" type="button">
-                    다운로드
-                  </Button>
-                </a>
+                  다운로드
+                </Button>
               ) : (
                 <span style={{ color: "var(--color-text-muted)", fontSize: "var(--font-size-caption)" }}>
                   다운로드 없음
@@ -195,17 +194,20 @@ function DownloadList({ outputs }: { outputs: OverviewOutputs }) {
     version: item.version,
     createdAt: item.generatedAt,
     downloadUrl: item.downloadUrl,
+    filename: `${item.id}.json`,
   }));
   const scheduleRows: DownloadRow[] = (outputs.generatedSchedules ?? []).map((item) => ({
     id: item.id,
     createdAt: item.generatedAt,
     downloadUrl: item.downloadUrl,
+    filename: `${item.id}.json`,
   }));
   const exportRows: DownloadRow[] = (outputs.exportFiles ?? []).map((item) => ({
     id: item.id,
     format: EXPORT_FORMAT_LABEL[item.format],
     createdAt: item.createdAt,
     downloadUrl: item.downloadUrl,
+    filename: `${item.id}.${item.format}`,
   }));
 
   return (

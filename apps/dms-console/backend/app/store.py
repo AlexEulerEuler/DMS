@@ -12,6 +12,7 @@ from pathlib import Path
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.errors import AppError
 from app.db import session_scope
 from app.models_db import (
@@ -940,8 +941,9 @@ def delete_input(input_id: str) -> None:
 # Agent-facing loop (docs/ia/runtime.md §4)
 # ---------------------------------------------------------------------------
 
-# docs live at apps/dms-console/docs (store.py is at .../backend/app/store.py).
-_DOCS_ROOT = Path(__file__).resolve().parents[2] / "docs"
+# docs live at apps/dms-console/docs (store.py is at .../backend/app/store.py);
+# overridable via DMS_DOCS_DIR for containers where the layout differs.
+_DOCS_ROOT = Path(settings.docs_dir).resolve() if settings.docs_dir else (Path(__file__).resolve().parents[2] / "docs")
 _DOC_DIRS = ("spec", "ia")
 
 

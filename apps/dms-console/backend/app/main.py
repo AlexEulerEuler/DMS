@@ -1,9 +1,19 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.router import api_router
 from app.core.config import settings
 from app.core.errors import register_exception_handlers
+from app.db import init_db
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Create tables + seed an empty DB on startup (docs/ia/runtime.md §1).
+    init_db()
+    yield
 
 
 def create_app() -> FastAPI:
@@ -11,6 +21,7 @@ def create_app() -> FastAPI:
         title=settings.project_name,
         version=settings.version,
         description="Service API for the DMS console.",
+        lifespan=lifespan,
     )
 
     app.add_middleware(

@@ -1,16 +1,28 @@
-"""In-memory data store + seed data for the console's own entities.
+"""Data-access layer (docs/ia/runtime.md §1).
 
-There is no database in this build (docs/spec leaves state management to
-implementation discretion). All console-owned entities (TaskIA, WorkItem,
-Agent, overview docs/outputs, issue overlays) live in module-level state,
-seeded with realistic sample data on import. GitHub issues themselves are
-owned by app.services.github (mock or real).
+Console-owned state lives in SQLite via SQLAlchemy so it survives restarts.
+Each public function opens a short-lived session, so the router/API layer calls
+``store.X(...)`` exactly as before. Static reference content (project meta,
+pipeline summary, overview docs) stays as module constants since it is read-only.
 """
 
-import itertools
 from datetime import UTC, datetime
 
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
 from app.core.errors import AppError
+from app.db import session_scope
+from app.models_db import (
+    AgentRow,
+    ExportFileRow,
+    GeneratedScheduleRow,
+    IssueOverlayRow,
+    MasterListRow,
+    SequenceRow,
+    TaskRow,
+    WorkRow,
+)
 from app.schemas.common import (
     AgentStatus,
     CommonStatus,
@@ -50,31 +62,27 @@ from app.schemas.requests import (
 PROJECT_ID = "proj_dms"
 
 
-def _now() -> str:
-    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+def _iso(value: datetime | None) -> str | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    return value.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-class _Sequence:
-    def __init__(self, prefix: str) -> None:
-        self._prefix = prefix
-        self._counter = itertools.count(1)
+def next_id(session: Session, prefix: str) -> str:
+    """Atomically increment a per-prefix counter and return e.g. 'task_07'."""
+    row = session.get(SequenceRow, prefix)
+    if row is None:
+        row = SequenceRow(prefix=prefix, value=0)
+        session.add(row)
+    row.value += 1
+    session.flush()
+    return f"{prefix}_{row.value:02d}"
 
-    def next(self) -> str:
-        return f"{self._prefix}_{next(self._counter):02d}"
-
-
-_cat_seq = _Sequence("cat")
-_task_seq = _Sequence("task")
-_work_seq = _Sequence("work")
-_agent_seq = _Sequence("agent")
-
-_tasks: dict[str, TaskIA] = {}
-_work_items: dict[str, WorkItem] = {}
-_agents: dict[str, Agent] = {}
-_issue_overlays: dict[int, dict] = {}
 
 # ---------------------------------------------------------------------------
-# Project meta / pipeline summary (Overview §6)
+# Static reference content (Overview §6) — read-only, not user data.
 # ---------------------------------------------------------------------------
 
 _project_meta = ProjectMeta(
@@ -98,10 +106,10 @@ _pipeline_summary = PipelineSummary(
     ],
     workflowSteps=[
         WorkflowStep(order=1, label="업로드"),
-        WorkflowStep(order=2, label="파싱·청킹"),
-        WorkflowStep(order=3, label="표준 목록 매칭"),
-        WorkflowStep(order=4, label="표준 목록 초안 생성"),
-        WorkflowStep(order=5, label="협업 검토"),
+        WorkflowStep(order=2, label="파싱"),
+        WorkflowStep(order=3, label="청킹"),
+        WorkflowStep(order=4, label="표준 목록 매칭"),
+        WorkflowStep(order=5, label="표준 목록 초안 생성"),
         WorkflowStep(order=6, label="표준 목록 확정"),
         WorkflowStep(order=7, label="생성 일정 산출"),
         WorkflowStep(order=8, label="내보내기"),
@@ -132,7 +140,7 @@ _overview_docs: dict[str, dict[str, str]] = {
     "pipeline": {
         "title": "전체 파이프라인",
         "content": (
-            "업로드 → 파싱·청킹 → 표준 목록 매칭 → 표준 목록 초안 생성 → 협업 검토 → 표준 목록 확정 → "
+            "업로드 → 파싱 → 청킹 → 표준 목록 매칭 → 표준 목록 초안 생성 → 표준 목록 확정 → "
             "생성 일정 산출 → 내보내기 순으로 진행됩니다. 각 단계의 산출은 다음 단계의 입력이 됩니다."
         ),
     },
@@ -147,14 +155,14 @@ _overview_docs: dict[str, dict[str, str]] = {
         "title": "API 엔드포인트",
         "content": (
             "콘솔 REST API는 /api 하위에 있습니다. "
-            "Overview·Task·WBS·Work·Agent·Issues 모듈별 엔드포인트를 제공합니다."
+            "Overview·Task·WBS·Work·Agent·Issues 모듈과 입력 업로드(/api/inputs)·파이프라인(/api/pipeline)·"
+            "에이전트 루프(/api/agent)를 제공합니다."
         ),
     },
     "cli": {
         "title": "CLI 명령어",
         "content": (
-            "generate master-list · generate schedule · export 명령으로 "
-            "표준 목록·생성 일정·내보내기 파이프라인을 실행합니다."
+            "python -m app.cli generate — 업로드된 입력으로 표준 목록·생성 일정·내보내기 파일을 산출합니다."
         ),
     },
     "folder-structure": {
@@ -163,73 +171,30 @@ _overview_docs: dict[str, dict[str, str]] = {
     },
     "data": {
         "title": "주요 데이터",
-        "content": "생성된 표준 목록·생성 일정·내보내기 파일을 조회하고 다운로드합니다.",
+        "content": "입력 문서를 업로드하고, 생성된 표준 목록·생성 일정·내보내기 파일을 조회·다운로드합니다.",
     },
     "tech-stack": {
         "title": "기술 스택",
-        "content": "프론트엔드: Next.js(React) + TypeScript. 백엔드: FastAPI(Python). GitHub Issues 연동.",
+        "content": "프론트엔드: Next.js(React) + TypeScript. 백엔드: FastAPI + SQLAlchemy(SQLite). GitHub Issues 연동.",
     },
     "env": {
         "title": "환경 변수",
         "content": (
-            "- DMS_GITHUB_TOKEN / DMS_GITHUB_OWNER / DMS_GITHUB_REPO: GitHub 연동(미설정 시 모의 데이터 사용)\n"
+            "- DMS_DB_PATH / DMS_STORAGE_DIR / DMS_SEED: 영속성·저장·시드\n"
+            "- DMS_API_TOKEN: 설정 시 API 토큰 게이트\n"
+            "- DMS_GITHUB_TOKEN / DMS_GITHUB_OWNER / DMS_GITHUB_REPO: GitHub 연동(미설정 시 모의 데이터)\n"
             "- NEXT_PUBLIC_API_URL: 프론트엔드가 호출할 백엔드 API 베이스 URL"
         ),
     },
     "runbook": {
         "title": "실행 방법",
-        "content": "백엔드: npm run dev:dms:backend. 프론트엔드: npm run dev:dms:frontend.",
+        "content": "백엔드: npm run dev:dms:backend. 프론트엔드: npm run dev:dms:frontend. 배포: docker compose up.",
     },
     "limitations": {
         "title": "알려진 한계",
-        "content": "GitHub webhook 실시간 반영 미지원(수동 새로고침), 다국어 미지원, 다크 모드 미지원.",
+        "content": "GitHub webhook 실시간 반영 미지원(수동 새로고침), 다중 사용자·RBAC는 향후, 다크 모드 미지원.",
     },
 }
-
-_master_lists = [
-    MasterList(
-        id="ml_01",
-        projectId=PROJECT_ID,
-        items=[MasterListItem(id="mli_01", title="표준 항목 A"), MasterListItem(id="mli_02", title="표준 항목 B")],
-        version="v3",
-        generatedAt="2026-06-20T00:00:00Z",
-        status=MasterListStatus.confirmed,
-        downloadUrl="/api/overview/outputs/master-list/ml_01/download",
-    ),
-]
-
-_generated_schedules = [
-    GeneratedSchedule(
-        id="gs_01",
-        projectId=PROJECT_ID,
-        milestones=[
-            Milestone(id="ms_01", title="1차 제출", date="2026-03-31"),
-            Milestone(id="ms_02", title="2차 제출", date="2026-05-15"),
-        ],
-        basedOn="bs_01",
-        generatedAt="2026-06-21T00:00:00Z",
-        downloadUrl="/api/overview/outputs/schedule/gs_01/download",
-    ),
-]
-
-_export_files = [
-    ExportFile(
-        id="ex_01",
-        projectId=PROJECT_ID,
-        format=ExportFormat.xlsx,
-        sourceOutput="ml_01",
-        createdAt="2026-06-22T00:00:00Z",
-        downloadUrl="/api/overview/outputs/export/ex_01/download",
-    ),
-    ExportFile(
-        id="ex_02",
-        projectId=PROJECT_ID,
-        format=ExportFormat.json,
-        sourceOutput="gs_01",
-        createdAt="2026-06-23T00:00:00Z",
-        downloadUrl="/api/overview/outputs/export/ex_02/download",
-    ),
-]
 
 
 def get_meta() -> ProjectMeta:
@@ -247,341 +212,328 @@ def get_doc(slug: str) -> dict:
     return {"slug": slug, "title": doc["title"], "content": doc["content"]}
 
 
-def get_outputs() -> dict:
-    return {
-        "masterLists": _master_lists,
-        "generatedSchedules": _generated_schedules,
-        "exportFiles": _export_files,
-    }
-
-
-def get_download(kind: str, item_id: str) -> tuple[str, str] | None:
-    if kind == "master-list":
-        match = next((m for m in _master_lists if m.id == item_id), None)
-        return (f"{item_id}.json", match.model_dump_json(indent=2)) if match else None
-    if kind == "schedule":
-        match = next((s for s in _generated_schedules if s.id == item_id), None)
-        return (f"{item_id}.json", match.model_dump_json(indent=2)) if match else None
-    if kind == "export":
-        match = next((e for e in _export_files if e.id == item_id), None)
-        if not match:
-            return None
-        return f"{item_id}.{match.format.value}", f"내보내기 파일 {item_id} ({match.format.value})\n"
-    return None
-
-
 # ---------------------------------------------------------------------------
-# TaskIA tree (task.md, data-model.md §3.4)
+# ORM ↔ Pydantic converters
 # ---------------------------------------------------------------------------
 
 
-def _add_category(title: str, order: int) -> TaskIA:
-    node = TaskIA(
-        id=_cat_seq.next(),
-        projectId=PROJECT_ID,
-        type=TaskNodeType.category,
-        title=title,
-        parentId=None,
-        order=order,
-        createdAt=_now(),
-        updatedAt=_now(),
+def _task_to_schema(row: TaskRow) -> TaskIA:
+    return TaskIA(
+        id=row.id,
+        projectId=row.project_id,
+        type=TaskNodeType(row.type),
+        title=row.title,
+        parentId=row.parent_id,
+        status=CommonStatus(row.status) if row.status else None,
+        owner=row.owner,
+        startDate=row.start_date,
+        endDate=row.end_date,
+        progress=row.progress,
+        order=row.order,
+        linkedWbsId=row.linked_wbs_id,
+        createdAt=_iso(row.created_at),
+        updatedAt=_iso(row.updated_at),
     )
-    _tasks[node.id] = node
-    return node
 
 
-def _add_task(
-    parent: TaskIA,
-    title: str,
-    status: CommonStatus,
-    owner: str,
-    start: str | None,
-    end: str | None,
-    progress: int | None,
-    order: int,
-) -> TaskIA:
-    node_id = _task_seq.next()
-    node = TaskIA(
-        id=node_id,
-        projectId=PROJECT_ID,
-        type=TaskNodeType.task,
-        title=title,
-        parentId=parent.id,
-        status=status,
-        owner=owner,
-        startDate=start,
-        endDate=end,
-        progress=progress,
-        order=order,
-        linkedWbsId=node_id,
-        createdAt=_now(),
-        updatedAt=_now(),
+def _work_to_schema(row: WorkRow) -> WorkItem:
+    return WorkItem(
+        id=row.id,
+        title=row.title,
+        owner=row.owner,
+        status=WorkStatus(row.status) if row.status else None,
+        startDate=row.start_date,
+        endDate=row.end_date,
+        description=row.description,
+        linkedIssue=row.linked_issue,
+        linkedAgent=row.linked_agent,
     )
-    _tasks[node.id] = node
-    return node
 
 
-#: (category title, [(task title, status, owner, start, end, progress), ...])
-_TASK_SEED_PLAN: list[tuple[str, list[tuple[str, CommonStatus, str, str | None, str | None, int | None]]]] = [
-    (
-        "프로젝트 관리",
-        [
-            ("기능 요건 정리 및 최종 산출물 정의", CommonStatus.done, "김도현", "2026-02-01", "2026-02-10", 100),
-            ("데이터 수집 및 원천 데이터 정리", CommonStatus.in_progress, "이서연", "2026-02-05", "2026-02-20", 60),
-            (
-                "데이터 관리 체계 및 버전 관리 기준 수립",
-                CommonStatus.planned,
-                "박지민",
-                "2026-02-18",
-                "2026-02-28",
-                None,
-            ),
-        ],
-    ),
-    (
-        "표준 목록 생성",
-        [
-            ("통합 표준 목록 생성", CommonStatus.done, "이서연", "2026-02-10", "2026-02-24", 100),
-            ("표준 목록 분류 체계 및 속성 정의", CommonStatus.done, "박지민", "2026-02-20", "2026-03-02", 100),
-            ("통합 표준 목록 초안 자동 생성", CommonStatus.in_progress, "김도현", "2026-03-01", "2026-03-18", 45),
-            ("협업 검토 기반 표준 목록 확정", CommonStatus.planned, "이서연", "2026-03-18", "2026-03-31", None),
-        ],
-    ),
-    (
-        "입력 문서 분석",
-        [
-            ("입력 문서 구조 파악", CommonStatus.done, "박지민", "2026-02-03", "2026-02-14", 100),
-            ("요구 문서 및 제출 조건 추출", CommonStatus.in_progress, "김도현", "2026-02-14", "2026-03-05", 55),
-            ("입력 문서–표준 목록 매칭 기준 수립", CommonStatus.planned, "이서연", "2026-03-05", "2026-03-20", None),
-        ],
-    ),
-    (
-        "일정 생성",
-        [
-            ("기준 일정 분석", CommonStatus.done, "박지민", "2026-03-02", "2026-03-16", 100),
-            ("생성 일정/제출 마일스톤 기준 정의", CommonStatus.in_progress, "이서연", "2026-03-16", "2026-04-06", 40),
-            ("문서별 제출 일정 생성", CommonStatus.planned, "김도현", "2026-04-06", "2026-04-30", None),
-        ],
-    ),
-]
+def _agent_to_schema(row: AgentRow) -> Agent:
+    return Agent(
+        id=row.id,
+        name=row.name,
+        status=AgentStatus(row.status) if row.status else None,
+        description=row.description,
+        planNote=row.plan_note,
+        references=list(row.references or []),
+        createdAt=_iso(row.created_at),
+        updatedAt=_iso(row.updated_at),
+    )
 
 
-def _seed_tasks() -> None:
-    for cat_order, (category_title, tasks) in enumerate(_TASK_SEED_PLAN, start=1):
-        category = _add_category(category_title, cat_order)
-        for task_order, (title, status, owner, start, end, progress) in enumerate(tasks, start=1):
-            _add_task(category, title, status, owner, start, end, progress, task_order)
+def _master_to_schema(row: MasterListRow) -> MasterList:
+    return MasterList(
+        id=row.id,
+        projectId=row.project_id,
+        items=[MasterListItem(**item) for item in (row.items or [])],
+        version=row.version,
+        generatedAt=_iso(row.generated_at),
+        status=MasterListStatus(row.status) if row.status else None,
+        downloadUrl=f"/api/overview/outputs/master-list/{row.id}/download",
+    )
 
 
-def _children(parent_id: str | None) -> list[TaskIA]:
-    return sorted((t for t in _tasks.values() if t.parentId == parent_id), key=lambda t: (t.order or 0))
+def _schedule_to_schema(row: GeneratedScheduleRow) -> GeneratedSchedule:
+    return GeneratedSchedule(
+        id=row.id,
+        projectId=row.project_id,
+        milestones=[Milestone(**m) for m in (row.milestones or [])],
+        basedOn=row.based_on,
+        generatedAt=_iso(row.generated_at),
+        downloadUrl=f"/api/overview/outputs/schedule/{row.id}/download",
+    )
 
 
-def _descendant_tasks(node_id: str) -> list[TaskIA]:
-    result: list[TaskIA] = []
-    for child in _children(node_id):
-        if child.type == TaskNodeType.task:
+def _export_to_schema(row: ExportFileRow) -> ExportFile:
+    return ExportFile(
+        id=row.id,
+        projectId=row.project_id,
+        format=ExportFormat(row.format),
+        sourceOutput=row.source_output,
+        createdAt=_iso(row.created_at),
+        downloadUrl=f"/api/overview/outputs/export/{row.id}/download",
+    )
+
+
+def _require_title(title: str, field: str = "제목") -> None:
+    if not title or not title.strip():
+        raise AppError(400, "validation_error", f"{field}은(는) 필수입니다.")
+
+
+# ---------------------------------------------------------------------------
+# TaskIA tree
+# ---------------------------------------------------------------------------
+
+
+def _progress_of_row(row: TaskRow) -> int:
+    if row.progress is not None:
+        return row.progress
+    return {"done": 100, "in_progress": 50, "planned": 0}.get(row.status or "planned", 0)
+
+
+def _descendant_task_rows(all_rows: list[TaskRow], node_id: str) -> list[TaskRow]:
+    result: list[TaskRow] = []
+    for child in [r for r in all_rows if r.parent_id == node_id]:
+        if child.type == TaskNodeType.task.value:
             result.append(child)
         else:
-            result.extend(_descendant_tasks(child.id))
+            result.extend(_descendant_task_rows(all_rows, child.id))
     return result
 
 
-def _progress_of(node: TaskIA) -> int:
-    if node.progress is not None:
-        return node.progress
-    return {CommonStatus.done: 100, CommonStatus.in_progress: 50, CommonStatus.planned: 0}.get(node.status, 0)
-
-
-def _aggregate(descendants: list[TaskIA]) -> tuple[CommonStatus | None, int | None]:
-    statuses = [d.status for d in descendants if d.status]
+def _aggregate(desc_rows: list[TaskRow]) -> tuple[CommonStatus | None, int | None]:
+    statuses = [d.status for d in desc_rows if d.status]
     if not statuses:
         return None, None
-    if all(s == CommonStatus.done for s in statuses):
-        agg_status = CommonStatus.done
-    elif any(s == CommonStatus.in_progress for s in statuses) or (
-        any(s == CommonStatus.done for s in statuses) and any(s == CommonStatus.planned for s in statuses)
+    if all(s == "done" for s in statuses):
+        agg = CommonStatus.done
+    elif any(s == "in_progress" for s in statuses) or (
+        any(s == "done" for s in statuses) and any(s == "planned" for s in statuses)
     ):
-        agg_status = CommonStatus.in_progress
+        agg = CommonStatus.in_progress
     else:
-        agg_status = CommonStatus.planned
-    progresses = [_progress_of(d) for d in descendants]
-    avg_progress = round(sum(progresses) / len(progresses)) if progresses else None
-    return agg_status, avg_progress
+        agg = CommonStatus.planned
+    progresses = [_progress_of_row(d) for d in desc_rows]
+    avg = round(sum(progresses) / len(progresses)) if progresses else None
+    return agg, avg
 
 
 def list_tasks(status_filter: CommonStatus | None = None) -> list[TaskIA]:
-    """Full tree, flattened. Category/group status+progress are always computed from
-    descendants; task rows are filtered by status while ancestor nodes stay (task.md §10)."""
-    nodes: list[TaskIA] = []
-    for node in sorted(_tasks.values(), key=lambda t: (t.parentId or "", t.order or 0)):
-        if node.type == TaskNodeType.task:
-            if status_filter is not None and node.status != status_filter:
-                continue
-            nodes.append(node)
-        else:
-            agg_status, agg_progress = _aggregate(_descendant_tasks(node.id))
-            nodes.append(node.model_copy(update={"status": agg_status, "progress": agg_progress}))
-    return nodes
+    with session_scope() as session:
+        rows = list(session.execute(select(TaskRow)).scalars().all())
+        nodes: list[TaskIA] = []
+        for row in sorted(rows, key=lambda r: (r.parent_id or "", r.order or 0)):
+            if row.type == TaskNodeType.task.value:
+                if status_filter is not None and row.status != status_filter.value:
+                    continue
+                nodes.append(_task_to_schema(row))
+            else:
+                agg_status, agg_progress = _aggregate(_descendant_task_rows(rows, row.id))
+                node = _task_to_schema(row)
+                node.status = agg_status
+                node.progress = agg_progress
+                nodes.append(node)
+        return nodes
 
 
-def _depth_of(parent_id: str | None) -> int:
+def _depth_of(session: Session, parent_id: str | None) -> int:
     depth = 0
     current = parent_id
     while current:
-        node = _tasks.get(current)
+        node = session.get(TaskRow, current)
         if node is None:
             break
         depth += 1
-        current = node.parentId
+        current = node.parent_id
     return depth
 
 
-def _require_title(title: str) -> None:
-    if not title or not title.strip():
-        raise AppError(400, "validation_error", "제목은 필수입니다.")
+def _child_count(session: Session, parent_id: str | None) -> int:
+    stmt = select(TaskRow).where(
+        TaskRow.parent_id.is_(None) if parent_id is None else TaskRow.parent_id == parent_id
+    )
+    return len(list(session.execute(stmt).scalars().all()))
 
 
 def create_task(payload: TaskCreateRequest) -> TaskIA:
     _require_title(payload.title)
-    if payload.parentId is not None and payload.parentId not in _tasks:
-        raise AppError(404, "not_found", "상위 노드를 찾을 수 없습니다.")
-    if _depth_of(payload.parentId) + 1 > 3:
-        raise AppError(400, "validation_error", "구분–중분류–세부 업무 3단을 초과할 수 없습니다.")
-    node_id = _cat_seq.next() if payload.type == TaskNodeType.category else _task_seq.next()
-    now = _now()
-    node = TaskIA(
-        id=node_id,
-        projectId=PROJECT_ID,
-        type=payload.type,
-        title=payload.title,
-        parentId=payload.parentId,
-        status=payload.status,
-        owner=payload.owner,
-        startDate=payload.startDate,
-        endDate=payload.endDate,
-        progress=payload.progress,
-        order=payload.order if payload.order is not None else len(_children(payload.parentId)) + 1,
-        linkedWbsId=node_id if payload.type == TaskNodeType.task else None,
-        createdAt=now,
-        updatedAt=now,
-    )
-    _tasks[node.id] = node
-    return node
+    with session_scope() as session:
+        if payload.parentId is not None and session.get(TaskRow, payload.parentId) is None:
+            raise AppError(404, "not_found", "상위 노드를 찾을 수 없습니다.")
+        if _depth_of(session, payload.parentId) + 1 > 3:
+            raise AppError(400, "validation_error", "구분–중분류–세부 업무 3단을 초과할 수 없습니다.")
+
+        is_task = payload.type == TaskNodeType.task
+        prefix = "cat" if payload.type == TaskNodeType.category else "task"
+        node_id = next_id(session, prefix)
+        row = TaskRow(
+            id=node_id,
+            project_id=PROJECT_ID,
+            type=payload.type.value,
+            title=payload.title,
+            parent_id=payload.parentId,
+            status=payload.status.value if payload.status else None,
+            owner=payload.owner,
+            start_date=payload.startDate,
+            end_date=payload.endDate,
+            progress=payload.progress,
+            order=payload.order if payload.order is not None else _child_count(session, payload.parentId) + 1,
+            linked_wbs_id=node_id if is_task else None,
+        )
+        session.add(row)
+        session.flush()
+        return _task_to_schema(row)
+
+
+_TASK_FIELD_MAP = {
+    "type": "type",
+    "title": "title",
+    "parentId": "parent_id",
+    "status": "status",
+    "owner": "owner",
+    "startDate": "start_date",
+    "endDate": "end_date",
+    "progress": "progress",
+    "order": "order",
+}
 
 
 def update_task(task_id: str, payload: TaskUpdateRequest) -> TaskIA:
-    node = _tasks.get(task_id)
-    if node is None:
-        raise AppError(404, "not_found", "해당 업무를 찾을 수 없습니다.")
     updates = payload.model_dump(exclude_unset=True)
-    if "title" in updates:
-        _require_title(updates["title"])
-    if "parentId" in updates and updates["parentId"] != node.parentId:
-        new_parent = updates["parentId"]
-        if new_parent is not None and new_parent not in _tasks:
-            raise AppError(404, "not_found", "상위 노드를 찾을 수 없습니다.")
-        if _depth_of(new_parent) + 1 > 3:
-            raise AppError(400, "validation_error", "구분–중분류–세부 업무 3단을 초과할 수 없습니다.")
-    merged = node.model_dump()
-    merged.update(updates)
-    merged["updatedAt"] = _now()
-    updated = TaskIA(**merged)
-    _tasks[task_id] = updated
-    return updated
+    with session_scope() as session:
+        row = session.get(TaskRow, task_id)
+        if row is None:
+            raise AppError(404, "not_found", "해당 업무를 찾을 수 없습니다.")
+        if "title" in updates:
+            _require_title(updates["title"])
+        if "parentId" in updates and updates["parentId"] != row.parent_id:
+            new_parent = updates["parentId"]
+            if new_parent is not None and session.get(TaskRow, new_parent) is None:
+                raise AppError(404, "not_found", "상위 노드를 찾을 수 없습니다.")
+            if _depth_of(session, new_parent) + 1 > 3:
+                raise AppError(400, "validation_error", "구분–중분류–세부 업무 3단을 초과할 수 없습니다.")
+        for key, value in updates.items():
+            attr = _TASK_FIELD_MAP.get(key)
+            if attr is None:
+                continue
+            if key in {"type", "status"} and value is not None:
+                value = value.value if hasattr(value, "value") else value
+            setattr(row, attr, value)
+        session.flush()
+        return _task_to_schema(row)
 
 
 def delete_task(task_id: str) -> None:
-    if task_id not in _tasks:
-        raise AppError(404, "not_found", "해당 업무를 찾을 수 없습니다.")
-    to_delete = [task_id]
-    stack = [task_id]
-    while stack:
-        current = stack.pop()
-        kids = [t.id for t in _tasks.values() if t.parentId == current]
-        to_delete.extend(kids)
-        stack.extend(kids)
-    for node_id in to_delete:
-        _tasks.pop(node_id, None)
+    with session_scope() as session:
+        root = session.get(TaskRow, task_id)
+        if root is None:
+            raise AppError(404, "not_found", "해당 업무를 찾을 수 없습니다.")
+        all_rows = list(session.execute(select(TaskRow)).scalars().all())
+        to_delete = {task_id}
+        stack = [task_id]
+        while stack:
+            current = stack.pop()
+            for child in [r for r in all_rows if r.parent_id == current]:
+                if child.id not in to_delete:
+                    to_delete.add(child.id)
+                    stack.append(child.id)
+        for row in all_rows:
+            if row.id in to_delete:
+                session.delete(row)
 
 
 # ---------------------------------------------------------------------------
-# WBS derivation (wbs.md §6-7)
+# WBS derivation
 # ---------------------------------------------------------------------------
 
 
-def _wbs_progress_of(item: WBSItem) -> int:
+def _wbs_progress(item: WBSItem) -> int:
     if item.progress is not None:
         return item.progress
     return {CommonStatus.done: 100, CommonStatus.in_progress: 50, CommonStatus.planned: 0}.get(item.status, 0)
 
 
-def _category_of(node: TaskIA) -> TaskIA | None:
-    current = node.parentId
-    while current:
-        parent = _tasks.get(current)
-        if parent is None:
-            break
-        if parent.type == TaskNodeType.category:
-            return parent
-        current = parent.parentId
-    return None
-
-
-def _group_title_of(node: TaskIA) -> str:
-    category = _category_of(node)
-    return category.title if category else "미분류"
-
-
 def get_wbs() -> dict:
-    task_nodes = [t for t in _tasks.values() if t.type == TaskNodeType.task]
-    category_order = {node.id: (node.order or 0) for node in _tasks.values() if node.type == TaskNodeType.category}
+    with session_scope() as session:
+        rows = list(session.execute(select(TaskRow)).scalars().all())
+        by_id = {r.id: r for r in rows}
+        categories = {r.id: r for r in rows if r.type == TaskNodeType.category.value}
 
-    def sort_key(node: TaskIA) -> tuple[int, int]:
-        category = _category_of(node)
-        return (category_order.get(category.id, 0) if category else 0, node.order or 0)
+        def category_of(row: TaskRow) -> TaskRow | None:
+            current = row.parent_id
+            while current:
+                parent = by_id.get(current)
+                if parent is None:
+                    break
+                if parent.type == TaskNodeType.category.value:
+                    return parent
+                current = parent.parent_id
+            return None
 
-    task_nodes.sort(key=sort_key)
-    items = [
-        WBSItem(
-            id=node.id,
-            group=_group_title_of(node),
-            title=node.title,
-            status=node.status or CommonStatus.planned,
-            owner=node.owner,
-            startDate=node.startDate,
-            endDate=node.endDate,
-            progress=node.progress,
-            order=node.order or 0,
-        )
-        for node in task_nodes
-    ]
+        task_rows = [r for r in rows if r.type == TaskNodeType.task.value]
+        cat_order = {c.id: (c.order or 0) for c in categories.values()}
+        task_rows.sort(key=lambda r: (cat_order.get(category_of(r).id, 0) if category_of(r) else 0, r.order or 0))
 
-    if items:
-        overall_progress = round(sum(_wbs_progress_of(i) for i in items) / len(items))
-        starts = [i.startDate for i in items if i.startDate]
-        ends = [i.endDate for i in items if i.endDate]
-        time_axis = {"startDate": min(starts) if starts else None, "endDate": max(ends) if ends else None}
-    else:
-        overall_progress = 0
-        time_axis = {"startDate": None, "endDate": None}
+        items = [
+            WBSItem(
+                id=r.id,
+                group=(category_of(r).title if category_of(r) else "미분류"),
+                title=r.title,
+                status=CommonStatus(r.status) if r.status else CommonStatus.planned,
+                owner=r.owner,
+                startDate=r.start_date,
+                endDate=r.end_date,
+                progress=r.progress,
+                order=r.order or 0,
+            )
+            for r in task_rows
+        ]
 
-    source_milestones = _generated_schedules[0].milestones if _generated_schedules else []
-    milestones = [
-        {"id": m.id, "type": "A" if idx == 0 else "B", "label": m.title, "date": m.date}
-        for idx, m in enumerate(source_milestones)
-    ]
+        if items:
+            overall = round(sum(_wbs_progress(i) for i in items) / len(items))
+            starts = [i.startDate for i in items if i.startDate]
+            ends = [i.endDate for i in items if i.endDate]
+            time_axis = {"startDate": min(starts) if starts else None, "endDate": max(ends) if ends else None}
+        else:
+            overall = 0
+            time_axis = {"startDate": None, "endDate": None}
 
-    return {
-        "items": items,
-        "milestones": milestones,
-        "overallProgress": overall_progress,
-        "timeAxis": time_axis,
-    }
+        latest = session.execute(
+            select(GeneratedScheduleRow).order_by(GeneratedScheduleRow.generated_at.desc())
+        ).scalars().first()
+        source_ms = list(latest.milestones or []) if latest else []
+        milestones = [
+            {"id": m.get("id"), "type": "A" if idx == 0 else "B", "label": m.get("title"), "date": m.get("date")}
+            for idx, m in enumerate(source_ms)
+        ]
+
+        return {"items": items, "milestones": milestones, "overallProgress": overall, "timeAxis": time_axis}
 
 
 # ---------------------------------------------------------------------------
-# WorkItem (work.md)
+# WorkItem
 # ---------------------------------------------------------------------------
 
 
@@ -591,244 +543,191 @@ def _validate_work_dates(start: str | None, end: str | None) -> None:
 
 
 def list_work(status: WorkStatus | None = None, q: str | None = None) -> list[WorkItem]:
-    values = list(reversed(list(_work_items.values())))
-    if status is not None:
-        values = [w for w in values if w.status == status]
-    if q:
-        needle = q.lower()
-        values = [w for w in values if needle in w.title.lower()]
-    return values
+    with session_scope() as session:
+        stmt = select(WorkRow).order_by(WorkRow.created_at.desc(), WorkRow.id.desc())
+        if status is not None:
+            stmt = stmt.where(WorkRow.status == status.value)
+        rows = list(session.execute(stmt).scalars().all())
+        if q:
+            needle = q.lower()
+            rows = [r for r in rows if needle in r.title.lower()]
+        return [_work_to_schema(r) for r in rows]
 
 
 def create_work(payload: WorkItemCreateRequest) -> WorkItem:
-    _require_title(payload.title)
+    _require_title(payload.title, "작업명")
     _validate_work_dates(payload.startDate, payload.endDate)
-    item = WorkItem(
-        id=_work_seq.next(),
-        title=payload.title,
-        owner=payload.owner,
-        status=payload.status or WorkStatus.planned,
-        startDate=payload.startDate,
-        endDate=payload.endDate,
-        description=payload.description,
-        linkedIssue=payload.linkedIssue,
-        linkedAgent=payload.linkedAgent,
-    )
-    _work_items[item.id] = item
-    return item
+    with session_scope() as session:
+        row = WorkRow(
+            id=next_id(session, "work"),
+            title=payload.title,
+            owner=payload.owner,
+            status=(payload.status or WorkStatus.planned).value,
+            start_date=payload.startDate,
+            end_date=payload.endDate,
+            description=payload.description,
+            linked_issue=payload.linkedIssue,
+            linked_agent=payload.linkedAgent,
+        )
+        session.add(row)
+        session.flush()
+        return _work_to_schema(row)
 
 
 def get_work(work_id: str) -> WorkItem:
-    item = _work_items.get(work_id)
-    if item is None:
-        raise AppError(404, "not_found", "해당 작업을 찾을 수 없습니다.")
-    return item
+    with session_scope() as session:
+        row = session.get(WorkRow, work_id)
+        if row is None:
+            raise AppError(404, "not_found", "해당 작업을 찾을 수 없습니다.")
+        return _work_to_schema(row)
+
+
+_WORK_FIELD_MAP = {
+    "title": "title",
+    "owner": "owner",
+    "status": "status",
+    "startDate": "start_date",
+    "endDate": "end_date",
+    "description": "description",
+    "linkedIssue": "linked_issue",
+    "linkedAgent": "linked_agent",
+}
 
 
 def update_work(work_id: str, payload: WorkItemUpdateRequest) -> WorkItem:
-    item = get_work(work_id)
     updates = payload.model_dump(exclude_unset=True)
-    if "title" in updates:
-        _require_title(updates["title"])
-    merged = item.model_dump()
-    merged.update(updates)
-    _validate_work_dates(merged.get("startDate"), merged.get("endDate"))
-    updated = WorkItem(**merged)
-    _work_items[work_id] = updated
-    return updated
+    with session_scope() as session:
+        row = session.get(WorkRow, work_id)
+        if row is None:
+            raise AppError(404, "not_found", "해당 작업을 찾을 수 없습니다.")
+        if "title" in updates:
+            _require_title(updates["title"], "작업명")
+        new_start = updates.get("startDate", row.start_date)
+        new_end = updates.get("endDate", row.end_date)
+        _validate_work_dates(new_start, new_end)
+        for key, value in updates.items():
+            attr = _WORK_FIELD_MAP.get(key)
+            if attr is None:
+                continue
+            if key == "status" and value is not None:
+                value = value.value if hasattr(value, "value") else value
+            setattr(row, attr, value)
+        session.flush()
+        return _work_to_schema(row)
 
 
 def delete_work(work_id: str) -> None:
-    if work_id not in _work_items:
-        raise AppError(404, "not_found", "해당 작업을 찾을 수 없습니다.")
-    del _work_items[work_id]
-
-
-def _seed_work_items() -> None:
-    entries = [
-        (
-            "비교 로직 구현",
-            "김도현",
-            WorkStatus.in_progress,
-            "2026-03-02",
-            "2026-03-20",
-            "표준 목록과 입력 문서 비교 로직 구현",
-            "1",
-            None,
-        ),
-        (
-            "표준 목록 매칭 API 수정",
-            "이서연",
-            WorkStatus.planned,
-            None,
-            None,
-            "매칭 API의 중복 매칭 버그 수정",
-            "1",
-            None,
-        ),
-        (
-            "생성 일정 캐싱 적용",
-            "박지민",
-            WorkStatus.review,
-            "2026-03-10",
-            "2026-03-22",
-            "생성 일정 API 응답 지연 개선을 위한 캐싱 적용",
-            "3",
-            None,
-        ),
-        (
-            "표준 목록 정합 에이전트 프로토타입",
-            "김도현",
-            WorkStatus.planned,
-            "2026-04-01",
-            "2026-04-15",
-            "표준 목록 정합 에이전트 기획을 프로토타입으로 구현",
-            None,
-            "agent_01",
-        ),
-        ("CLI 문서 갱신", "이서연", WorkStatus.done, "2026-06-25", "2026-06-26", "CLI 명령어 문서 최신화", "5", None),
-    ]
-    for title, owner, work_status, start, end, desc, linked_issue, linked_agent in entries:
-        work_id = _work_seq.next()
-        _work_items[work_id] = WorkItem(
-            id=work_id,
-            title=title,
-            owner=owner,
-            status=work_status,
-            startDate=start,
-            endDate=end,
-            description=desc,
-            linkedIssue=linked_issue,
-            linkedAgent=linked_agent,
-        )
+    with session_scope() as session:
+        row = session.get(WorkRow, work_id)
+        if row is None:
+            raise AppError(404, "not_found", "해당 작업을 찾을 수 없습니다.")
+        session.delete(row)
 
 
 # ---------------------------------------------------------------------------
-# Agent (agent.md)
+# Agent
 # ---------------------------------------------------------------------------
 
 
 def list_agents(status: AgentStatus | None = None, q: str | None = None) -> list[Agent]:
-    values = list(_agents.values())
-    if status is not None:
-        values = [a for a in values if a.status == status]
-    if q:
-        needle = q.lower()
-        values = [a for a in values if needle in a.name.lower()]
-    return sorted(values, key=lambda a: a.createdAt or "", reverse=True)
+    with session_scope() as session:
+        stmt = select(AgentRow).order_by(AgentRow.created_at.desc(), AgentRow.id.desc())
+        if status is not None:
+            stmt = stmt.where(AgentRow.status == status.value)
+        rows = list(session.execute(stmt).scalars().all())
+        if q:
+            needle = q.lower()
+            rows = [r for r in rows if needle in r.name.lower()]
+        return [_agent_to_schema(r) for r in rows]
 
 
 def create_agent(payload: AgentCreateRequest) -> Agent:
-    _require_title(payload.name)
-    agent_id = _agent_seq.next()
-    now = _now()
-    agent = Agent(
-        id=agent_id,
-        name=payload.name,
-        status=payload.status or AgentStatus.draft,
-        description=payload.description,
-        planNote=payload.planNote,
-        references=payload.references or [],
-        createdAt=now,
-        updatedAt=now,
-    )
-    _agents[agent_id] = agent
-    return agent
+    _require_title(payload.name, "에이전트명")
+    with session_scope() as session:
+        row = AgentRow(
+            id=next_id(session, "agent"),
+            name=payload.name,
+            status=(payload.status or AgentStatus.draft).value,
+            description=payload.description,
+            plan_note=payload.planNote,
+            references=payload.references or [],
+        )
+        session.add(row)
+        session.flush()
+        return _agent_to_schema(row)
 
 
 def get_agent(agent_id: str) -> Agent:
-    agent = _agents.get(agent_id)
-    if agent is None:
-        raise AppError(404, "not_found", "해당 에이전트를 찾을 수 없습니다.")
-    return agent
+    with session_scope() as session:
+        row = session.get(AgentRow, agent_id)
+        if row is None:
+            raise AppError(404, "not_found", "해당 에이전트를 찾을 수 없습니다.")
+        return _agent_to_schema(row)
+
+
+_AGENT_FIELD_MAP = {
+    "name": "name",
+    "status": "status",
+    "description": "description",
+    "planNote": "plan_note",
+    "references": "references",
+}
 
 
 def update_agent(agent_id: str, payload: AgentUpdateRequest) -> Agent:
-    agent = get_agent(agent_id)
     updates = payload.model_dump(exclude_unset=True)
-    if "name" in updates:
-        _require_title(updates["name"])
-    merged = agent.model_dump()
-    merged.update(updates)
-    merged["updatedAt"] = _now()
-    updated = Agent(**merged)
-    _agents[agent_id] = updated
-    return updated
+    with session_scope() as session:
+        row = session.get(AgentRow, agent_id)
+        if row is None:
+            raise AppError(404, "not_found", "해당 에이전트를 찾을 수 없습니다.")
+        if "name" in updates:
+            _require_title(updates["name"], "에이전트명")
+        for key, value in updates.items():
+            attr = _AGENT_FIELD_MAP.get(key)
+            if attr is None:
+                continue
+            if key == "status" and value is not None:
+                value = value.value if hasattr(value, "value") else value
+            if key == "references" and value is None:
+                value = []
+            setattr(row, attr, value)
+        session.flush()
+        return _agent_to_schema(row)
 
 
 def delete_agent(agent_id: str) -> None:
-    if agent_id not in _agents:
-        raise AppError(404, "not_found", "해당 에이전트를 찾을 수 없습니다.")
-    del _agents[agent_id]
-
-
-def _seed_agents() -> None:
-    entries = [
-        (
-            "표준 목록 정합 에이전트",
-            AgentStatus.draft,
-            "입력 문서와 기존 표준 목록 간 매칭을 검증하는 에이전트",
-            "목적: 표준 목록 확정 전 매칭 오류를 사전에 잡아낸다.\n"
-            "입력: 입력 문서 파싱 결과, 기존 표준 목록.\n"
-            "동작: 유사도 매칭 후 불일치 항목을 리포트.\n"
-            "필요 도구: 문서 파싱기, 임베딩 검색.",
-            ["https://example.com/rag/master-list"],
-            "2026-06-11T00:00:00Z",
-            "2026-06-19T00:00:00Z",
-        ),
-        (
-            "일정 생성 검증 에이전트",
-            AgentStatus.confirmed,
-            "생성 일정의 마일스톤 정합성을 검증",
-            "목적: 생성 일정이 기준 일정 제약을 위반하지 않는지 확인.\n"
-            "입력: 기준 일정, 생성 일정 초안.\n"
-            "동작: 제약 조건 검사 후 위반 목록 반환.",
-            [],
-            "2026-06-12T00:00:00Z",
-            "2026-06-20T00:00:00Z",
-        ),
-        (
-            "이슈 트리아지 에이전트",
-            AgentStatus.on_hold,
-            "신규 이슈의 우선순위·라벨을 자동 추천",
-            "목적: 신규 GitHub 이슈에 우선순위·라벨을 추천해 트리아지 속도를 높인다.\n"
-            "현재 보류: 라벨 체계 확정 대기 중.",
-            [],
-            "2026-06-13T00:00:00Z",
-            "2026-06-21T00:00:00Z",
-        ),
-    ]
-    for name, agent_status, description, plan_note, refs, created_at, updated_at in entries:
-        agent_id = _agent_seq.next()
-        _agents[agent_id] = Agent(
-            id=agent_id,
-            name=name,
-            status=agent_status,
-            description=description,
-            planNote=plan_note,
-            references=refs,
-            createdAt=created_at,
-            updatedAt=updated_at,
-        )
+    with session_scope() as session:
+        row = session.get(AgentRow, agent_id)
+        if row is None:
+            raise AppError(404, "not_found", "해당 에이전트를 찾을 수 없습니다.")
+        session.delete(row)
 
 
 # ---------------------------------------------------------------------------
-# Issue overlay (issues.md §6, data-model.md §3.6)
+# Issue overlay
 # ---------------------------------------------------------------------------
 
 
 def get_overlay(number: int) -> dict:
-    return _issue_overlays.get(number, {"priority": Priority.normal, "linkedWorkItems": []})
+    with session_scope() as session:
+        row = session.get(IssueOverlayRow, number)
+        if row is None:
+            return {"priority": Priority.normal, "linkedWorkItems": []}
+        return {"priority": Priority(row.priority), "linkedWorkItems": list(row.linked_work_items or [])}
 
 
 def set_overlay(number: int, priority: Priority | None, linked: list[str] | None) -> dict:
-    current = dict(get_overlay(number))
-    if priority is not None:
-        current["priority"] = priority
-    if linked is not None:
-        current["linkedWorkItems"] = linked
-    _issue_overlays[number] = current
-    return current
+    with session_scope() as session:
+        row = session.get(IssueOverlayRow, number)
+        if row is None:
+            row = IssueOverlayRow(issue_number=number, priority=Priority.normal.value, linked_work_items=[])
+            session.add(row)
+        if priority is not None:
+            row.priority = priority.value
+        if linked is not None:
+            row.linked_work_items = list(linked)
+        session.flush()
+        return {"priority": Priority(row.priority), "linkedWorkItems": list(row.linked_work_items or [])}
 
 
 def merge_issue(raw: GitHubIssue) -> IssueView:
@@ -836,25 +735,48 @@ def merge_issue(raw: GitHubIssue) -> IssueView:
     return IssueView(**raw.model_dump(), **overlay)
 
 
-def _seed_issue_overlays() -> None:
-    _issue_overlays.update(
-        {
-            1: {"priority": Priority.high, "linkedWorkItems": ["work_01", "work_02"]},
-            2: {"priority": Priority.urgent, "linkedWorkItems": []},
-            3: {"priority": Priority.normal, "linkedWorkItems": ["work_03"]},
-            5: {"priority": Priority.low, "linkedWorkItems": ["work_05"]},
+# ---------------------------------------------------------------------------
+# Pipeline outputs (populated by seed + generation pipeline)
+# ---------------------------------------------------------------------------
+
+
+def get_outputs() -> dict:
+    with session_scope() as session:
+        masters = list(session.execute(select(MasterListRow).order_by(MasterListRow.generated_at.desc())).scalars())
+        schedules = list(
+            session.execute(select(GeneratedScheduleRow).order_by(GeneratedScheduleRow.generated_at.desc())).scalars()
+        )
+        exports = list(session.execute(select(ExportFileRow).order_by(ExportFileRow.created_at.desc())).scalars())
+        return {
+            "masterLists": [_master_to_schema(r) for r in masters],
+            "generatedSchedules": [_schedule_to_schema(r) for r in schedules],
+            "exportFiles": [_export_to_schema(r) for r in exports],
         }
-    )
 
 
-def seed_all() -> None:
-    """Idempotent-ish seed: only runs once per process since sequences are module-level."""
-    if _tasks:
-        return
-    _seed_tasks()
-    _seed_agents()
-    _seed_work_items()
-    _seed_issue_overlays()
+def get_download(kind: str, item_id: str) -> tuple[str, str] | tuple[str, bytes] | None:
+    """Return (filename, content) for an output artifact, or None if missing.
 
+    master-list/schedule serialize the record to JSON; export streams the real
+    generated file from storage when present (Phase 3), else a JSON fallback.
+    """
+    with session_scope() as session:
+        if kind == "master-list":
+            row = session.get(MasterListRow, item_id)
+            return (f"{item_id}.json", _master_to_schema(row).model_dump_json(indent=2)) if row else None
+        if kind == "schedule":
+            row = session.get(GeneratedScheduleRow, item_id)
+            return (f"{item_id}.json", _schedule_to_schema(row).model_dump_json(indent=2)) if row else None
+        if kind == "export":
+            row = session.get(ExportFileRow, item_id)
+            if row is None:
+                return None
+            filename = f"{item_id}.{row.format}"
+            if row.stored_path:
+                import os
 
-seed_all()
+                if os.path.exists(row.stored_path):
+                    with open(row.stored_path, "rb") as handle:
+                        return filename, handle.read()
+            return filename, _export_to_schema(row).model_dump_json(indent=2)
+        return None

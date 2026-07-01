@@ -21,6 +21,18 @@ class Settings(BaseSettings):
     github_repo: str | None = None
     github_api_url: str = "https://api.github.com"
 
+    # Runtime persistence + storage (docs/ia/runtime.md §1-2, §6).
+    db_path: str = "./dms.db"
+    storage_dir: str = "./storage"
+    # Seed an empty DB with sample data (dev default on; set 0 for a clean prod start).
+    seed: bool = True
+    # Optional API token gate (runtime.md §5). When set, requests need Bearer auth.
+    api_token: str | None = None
+
+    @property
+    def database_url(self) -> str:
+        return f"sqlite:///{self.db_path}"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_prefix="DMS_",

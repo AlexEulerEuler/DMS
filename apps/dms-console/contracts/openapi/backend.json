@@ -630,6 +630,110 @@
         }
       }
     },
+    "/api/work/{work_id}/claim": {
+      "post": {
+        "tags": [
+          "work"
+        ],
+        "summary": "Claim Work",
+        "operationId": "claim_work_api_work__work_id__claim_post",
+        "parameters": [
+          {
+            "name": "work_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Work Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkClaimRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/work/{work_id}/report": {
+      "post": {
+        "tags": [
+          "work"
+        ],
+        "summary": "Report Work",
+        "operationId": "report_work_api_work__work_id__report_post",
+        "parameters": [
+          {
+            "name": "work_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Work Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkReportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/agents": {
       "get": {
         "tags": [
@@ -1261,6 +1365,143 @@
                   "additionalProperties": true,
                   "type": "object",
                   "title": "Response Run Api Pipeline Run Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent/context": {
+      "get": {
+        "tags": [
+          "agent"
+        ],
+        "summary": "Get Context",
+        "operationId": "get_context_api_agent_context_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get Context Api Agent Context Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent/docs": {
+      "get": {
+        "tags": [
+          "agent"
+        ],
+        "summary": "List Docs",
+        "operationId": "list_docs_api_agent_docs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response List Docs Api Agent Docs Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent/docs/{doc_path}": {
+      "get": {
+        "tags": [
+          "agent"
+        ],
+        "summary": "Read Doc",
+        "operationId": "read_doc_api_agent_docs__doc_path__get",
+        "parameters": [
+          {
+            "name": "doc_path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Path"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Read Doc Api Agent Docs  Doc Path  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent/work": {
+      "get": {
+        "tags": [
+          "agent"
+        ],
+        "summary": "List Open Work",
+        "operationId": "list_open_work_api_agent_work_get",
+        "parameters": [
+          {
+            "name": "unclaimed",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Unclaimed"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WorkItem"
+                  },
+                  "title": "Response List Open Work Api Agent Work Get"
                 }
               }
             }
@@ -2133,6 +2374,19 @@
         ],
         "title": "ValidationError"
       },
+      "WorkClaimRequest": {
+        "properties": {
+          "executor": {
+            "type": "string",
+            "title": "Executor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "executor"
+        ],
+        "title": "WorkClaimRequest"
+      },
       "WorkItem": {
         "properties": {
           "id": {
@@ -2218,6 +2472,28 @@
               }
             ],
             "title": "Linkedagent"
+          },
+          "executor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Executor"
+          },
+          "claimedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Claimedat"
           }
         },
         "type": "object",
@@ -2408,6 +2684,44 @@
         },
         "type": "object",
         "title": "WorkItemUpdateRequest"
+      },
+      "WorkReportRequest": {
+        "properties": {
+          "status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WorkStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "executor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Executor"
+          }
+        },
+        "type": "object",
+        "title": "WorkReportRequest"
       },
       "WorkStatus": {
         "type": "string",

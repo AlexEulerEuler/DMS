@@ -7,8 +7,9 @@ pipeline summary, overview docs) stays as module constants since it is read-only
 """
 
 from datetime import UTC, datetime
+from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
@@ -253,6 +254,8 @@ def _work_to_schema(row: WorkRow) -> WorkItem:
         description=row.description,
         linkedIssue=row.linked_issue,
         linkedAgent=row.linked_agent,
+        executor=row.executor,
+        claimedAt=_iso(row.claimed_at),
     )
 
 
@@ -931,3 +934,118 @@ def delete_input(input_id: str) -> None:
                 session.delete(row)
                 return
         raise AppError(404, "not_found", "해당 입력을 찾을 수 없습니다.")
+
+
+# ---------------------------------------------------------------------------
+# Agent-facing loop (docs/ia/runtime.md §4)
+# ---------------------------------------------------------------------------
+
+# docs live at apps/dms-console/docs (store.py is at .../backend/app/store.py).
+_DOCS_ROOT = Path(__file__).resolve().parents[2] / "docs"
+_DOC_DIRS = ("spec", "ia")
+
+
+def list_project_docs() -> list[dict]:
+    """Machine-readable index of the spec/IA docs an agent can read."""
+    docs: list[dict] = []
+    for sub in _DOC_DIRS:
+        directory = _DOCS_ROOT / sub
+        if not directory.is_dir():
+            continue
+        for path in sorted(directory.glob("*.md")):
+            docs.append({"path": f"{sub}/{path.name}", "title": path.stem})
+    return docs
+
+
+def read_project_doc(rel_path: str) -> dict:
+    """Read a whitelisted doc under docs/spec or docs/ia (path-traversal safe)."""
+    candidate = (_DOCS_ROOT / rel_path).resolve()
+    try:
+        candidate.relative_to(_DOCS_ROOT.resolve())
+    except ValueError as exc:
+        raise AppError(400, "validation_error", "허용되지 않은 경로입니다.") from exc
+    if candidate.suffix != ".md" or not candidate.is_file():
+        raise AppError(404, "not_found", "문서를 찾을 수 없습니다.")
+    return {"path": rel_path, "content": candidate.read_text(encoding="utf-8")}
+
+
+def get_agent_context() -> dict:
+    """One-shot orientation for a coding agent: the docs it can read + a live
+    snapshot of project state (work by status, open work, task/agent counts)."""
+    with session_scope() as session:
+        work_rows = list(session.execute(select(WorkRow)).scalars())
+        by_status: dict[str, int] = {}
+        for row in work_rows:
+            by_status[row.status or "planned"] = by_status.get(row.status or "planned", 0) + 1
+        open_work = [
+            _work_to_schema(r) for r in work_rows if (r.status or "planned") in ("planned", "in_progress", "review")
+        ]
+        task_count = session.execute(
+            select(func.count()).select_from(TaskRow).where(TaskRow.type == TaskNodeType.task.value)
+        ).scalar_one()
+        agent_count = session.execute(select(func.count()).select_from(AgentRow)).scalar_one()
+
+    return {
+        "docs": list_project_docs(),
+        "project": {
+            "id": PROJECT_ID,
+            "workByStatus": by_status,
+            "openWorkCount": len(open_work),
+            "taskCount": task_count,
+            "agentCount": agent_count,
+        },
+        "openWork": open_work,
+        "guide": (
+            "read_project_doc으로 스펙을 읽고, GET /api/agent/work로 미착수 작업을 받아 "
+            "POST /api/work/{id}/claim으로 클레임한 뒤, 진행하며 POST /api/work/{id}/report로 "
+            "상태를 되돌려 쓰세요."
+        ),
+    }
+
+
+def list_open_work(unclaimed_only: bool = False) -> list[WorkItem]:
+    with session_scope() as session:
+        stmt = select(WorkRow).where(WorkRow.status.in_(["planned", "in_progress", "review"]))
+        if unclaimed_only:
+            stmt = stmt.where(WorkRow.executor.is_(None))
+        stmt = stmt.order_by(WorkRow.created_at.asc())
+        return [_work_to_schema(r) for r in session.execute(stmt).scalars().all()]
+
+
+def claim_work(work_id: str, executor: str) -> WorkItem:
+    """Atomically claim an unclaimed work item (409 if already held by another).
+    Sets executor + claimedAt and moves planned→in_progress."""
+    if not executor or not executor.strip():
+        raise AppError(400, "validation_error", "executor가 필요합니다.")
+    with session_scope() as session:
+        row = session.get(WorkRow, work_id)
+        if row is None:
+            raise AppError(404, "not_found", "해당 작업을 찾을 수 없습니다.")
+        if row.executor and row.executor != executor:
+            raise AppError(409, "conflict", f"이미 {row.executor}가 클레임한 작업입니다.")
+        row.executor = executor
+        row.claimed_at = datetime.now(UTC)
+        if (row.status or "planned") == "planned":
+            row.status = "in_progress"
+        session.flush()
+        return _work_to_schema(row)
+
+
+def report_work(work_id: str, status: str | None, note: str | None, executor: str | None = None) -> WorkItem:
+    """Agent writes progress back: optional status transition + appended note."""
+    with session_scope() as session:
+        row = session.get(WorkRow, work_id)
+        if row is None:
+            raise AppError(404, "not_found", "해당 작업을 찾을 수 없습니다.")
+        if executor and row.executor and row.executor != executor:
+            raise AppError(409, "conflict", "다른 에이전트가 클레임한 작업입니다.")
+        if status is not None:
+            if status not in {s.value for s in WorkStatus}:
+                raise AppError(400, "validation_error", "알 수 없는 상태입니다.")
+            row.status = status
+        if note and note.strip():
+            stamp = datetime.now(UTC).strftime("%Y-%m-%d %H:%M")
+            prefix = f"{row.description}\n" if row.description else ""
+            row.description = f"{prefix}[{stamp}] {note.strip()}"
+        session.flush()
+        return _work_to_schema(row)

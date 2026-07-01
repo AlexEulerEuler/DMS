@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Query
+from pydantic import BaseModel
 
 from app import store
 from app.core.pagination import paginate
@@ -7,6 +8,16 @@ from app.schemas.models import WorkItem
 from app.schemas.requests import WorkItemCreateRequest, WorkItemUpdateRequest
 
 router = APIRouter(prefix="/work", tags=["work"])
+
+
+class WorkClaimRequest(BaseModel):
+    executor: str
+
+
+class WorkReportRequest(BaseModel):
+    status: WorkStatus | None = None
+    note: str | None = None
+    executor: str | None = None
 
 
 @router.get("")
@@ -39,3 +50,17 @@ def update_work(work_id: str, payload: WorkItemUpdateRequest) -> WorkItem:
 @router.delete("/{work_id}", status_code=204)
 def delete_work(work_id: str) -> None:
     store.delete_work(work_id)
+
+
+# Agent loop (docs/ia/runtime.md §4): claim a work item / report progress back.
+
+
+@router.post("/{work_id}/claim", response_model=WorkItem)
+def claim_work(work_id: str, payload: WorkClaimRequest) -> WorkItem:
+    return store.claim_work(work_id, payload.executor)
+
+
+@router.post("/{work_id}/report", response_model=WorkItem)
+def report_work(work_id: str, payload: WorkReportRequest) -> WorkItem:
+    status = payload.status.value if payload.status else None
+    return store.report_work(work_id, status, payload.note, payload.executor)

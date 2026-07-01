@@ -203,6 +203,9 @@ class WorkItem(BaseModel):
     description: str | None = None
     linkedIssue: str | None = None
     linkedAgent: str | None = None
+    # Agent loop (runtime.md §4): the agent that claimed this work item, and when.
+    executor: str | None = None
+    claimedAt: DateTimeString | None = None
 
 
 # ---------------------------------------------------------------------------

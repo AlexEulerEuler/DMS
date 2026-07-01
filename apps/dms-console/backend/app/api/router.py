@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 
+from app.api.routes_agent import router as agent_router
 from app.api.routes_agents import router as agents_router
 from app.api.routes_health import router as health_router
 from app.api.routes_inputs import router as inputs_router
@@ -20,3 +21,4 @@ api_router.include_router(agents_router)
 api_router.include_router(issues_router)
 api_router.include_router(inputs_router)
 api_router.include_router(pipeline_router)
+api_router.include_router(agent_router)

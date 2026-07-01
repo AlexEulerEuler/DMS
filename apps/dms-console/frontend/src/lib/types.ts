@@ -263,6 +263,9 @@ export interface WorkItem {
   description?: string | null;
   linkedIssue?: string | null;
   linkedAgent?: string | null;
+  // Agent loop (runtime.md §4): the agent that claimed this work item, and when.
+  executor?: string | null;
+  claimedAt?: string | null;
 }
 
 // ---------------------------------------------------------------------------

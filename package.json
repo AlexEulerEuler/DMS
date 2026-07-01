@@ -21,6 +21,8 @@
     "dev:dms:backend:reload": "cd apps/dms-console/backend && .venv/bin/python -m uvicorn app.main:app --reload --port 8000",
     "test:dms:backend": "cd apps/dms-console/backend && .venv/bin/python -m pytest",
     "lint:dms:backend": "cd apps/dms-console/backend && .venv/bin/python -m ruff check .",
-    "openapi:dms:backend": "cd apps/dms-console/backend && .venv/bin/python -m app.export_openapi ../contracts/openapi/backend.json"
+    "openapi:dms:backend": "cd apps/dms-console/backend && .venv/bin/python -m app.export_openapi ../contracts/openapi/backend.json",
+    "cli:dms:generate": "cd apps/dms-console/backend && .venv/bin/python -m app.cli generate",
+    "mcp:dms": "cd apps/dms-console/backend && .venv/bin/python -m app.mcp_server"
   }
 }

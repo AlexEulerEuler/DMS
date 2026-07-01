@@ -217,6 +217,9 @@ export default function WorkDetailPage() {
             <span style={{ color: "var(--color-text-muted)" }}>
               일정: {formatDateRange(work.startDate, work.endDate)}
             </span>
+            {work.executor ? (
+              <span style={{ color: "var(--color-primary)" }}>실행 에이전트: {work.executor}</span>
+            ) : null}
           </div>
         }
       />

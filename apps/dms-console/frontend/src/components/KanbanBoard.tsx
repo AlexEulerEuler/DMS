@@ -140,6 +140,11 @@ function WorkCard({ card, onClick, onMove }: WorkCardProps) {
 
       <div className={styles.cardMeta}>담당: {card.owner || "미지정"}</div>
       <div className={styles.cardMeta}>일정: {formatDateRange(card.startDate, card.endDate)}</div>
+      {card.executor ? (
+        <div className={styles.cardMeta} style={{ color: "var(--color-primary)" }}>
+          실행: {card.executor}
+        </div>
+      ) : null}
 
       <div className={styles.cardFooter}>
         <StatusChip status={{ domain: "work", value: status }} size="sm" />

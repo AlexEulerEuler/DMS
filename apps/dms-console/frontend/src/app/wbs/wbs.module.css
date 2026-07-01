@@ -1,0 +1,74 @@
+/* /wbs — 진행현황 (WBS). Overall-progress summary + legend keys. */
+
+.overall {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.overallValue {
+  font-size: var(--font-size-body);
+  font-weight: 600;
+  color: var(--color-text);
+  white-space: nowrap;
+}
+
+.overallTrack {
+  position: relative;
+  display: inline-block;
+  width: 200px;
+  max-width: 40vw;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--color-border);
+  overflow: hidden;
+}
+
+.overallFill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  border-radius: var(--radius-full);
+  background: var(--color-primary);
+}
+
+/* ---- Legend ---- */
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-caption);
+  color: var(--color-text-muted);
+}
+
+.swatch {
+  display: inline-block;
+  width: 16px;
+  height: 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+}
+
+.swatchDone {
+  background: var(--color-status-done);
+  border-color: var(--color-status-done);
+}
+
+.swatchInProgress {
+  background: var(--color-status-in-progress);
+  border-color: var(--color-status-in-progress);
+}
+
+.swatchPlanned {
+  background: color-mix(in srgb, var(--color-status-planned) 22%, transparent);
+  border-color: var(--color-status-planned);
+}

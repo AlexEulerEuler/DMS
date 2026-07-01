@@ -1,0 +1,351 @@
+/* GanttGrid — WBS schedule table (components.md §5).
+   Flex-row architecture: every logical row is one flex row that contains a
+   sticky-left info block + the time cells, so left/right always align.
+   The header row sticks to the top; the left info block sticks to the left. */
+
+.wrapper {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--color-bg);
+}
+
+.scroll {
+  overflow: auto;
+  max-height: 70vh;
+  /* let content define width so weeks extend past the viewport and scroll */
+  width: 100%;
+}
+
+.scroll:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+
+/* ---- Header row (sticky top) ---- */
+.headerRow {
+  display: flex;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  width: max-content;
+  min-width: 100%;
+  background: var(--color-surface);
+}
+
+.leftHead {
+  display: flex;
+  position: sticky;
+  left: 0;
+  z-index: 6;
+  background: var(--color-surface);
+  border-right: 2px solid var(--color-border);
+}
+
+.headCell {
+  display: flex;
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  box-sizing: border-box;
+  font-size: var(--font-size-caption);
+  font-weight: 600;
+  color: var(--color-text-muted);
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  border-right: 1px solid var(--color-border);
+  min-height: 44px;
+}
+
+.timeHead {
+  display: flex;
+  flex-direction: column;
+}
+
+.monthRow,
+.weekRow {
+  display: flex;
+}
+
+.monthCell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-height: 22px;
+  font-size: var(--font-size-caption);
+  font-weight: 600;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  border-right: 1px solid var(--color-border);
+}
+
+.weekCell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-height: 22px;
+  font-size: 10px;
+  color: var(--color-text-muted);
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  border-right: 1px solid var(--color-border);
+}
+
+.noAxis {
+  display: flex;
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-size-caption);
+  color: var(--color-text-muted);
+  min-height: 44px;
+}
+
+/* ---- Milestone lane ---- */
+.milestoneRow {
+  display: flex;
+  width: max-content;
+  min-width: 100%;
+}
+
+.leftMilestone {
+  position: sticky;
+  left: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  padding: 0 var(--space-3);
+  font-size: var(--font-size-caption);
+  color: var(--color-text-muted);
+  background: var(--color-surface);
+  border-right: 2px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+  min-height: 34px;
+}
+
+.milestoneLane {
+  position: relative;
+  min-height: 34px;
+  background: var(--color-bg);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.milestoneMarker {
+  position: absolute;
+  top: 2px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: help;
+  white-space: nowrap;
+}
+
+.milestoneTriangle {
+  line-height: 1;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.milestoneLabel {
+  font-size: 9px;
+  color: var(--color-text-muted);
+  max-width: 132px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.milestoneKindA {
+  color: var(--color-primary);
+}
+
+.milestoneKindB {
+  color: var(--color-warning);
+}
+
+/* ---- Body ---- */
+.body {
+  display: flex;
+  flex-direction: column;
+  width: max-content;
+  min-width: 100%;
+}
+
+.row {
+  display: flex;
+  width: max-content;
+  min-width: 100%;
+}
+
+.leftRow {
+  display: flex;
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  background: var(--color-surface);
+  border-right: 2px solid var(--color-border);
+}
+
+.cell {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  padding: var(--space-2) var(--space-3);
+  min-height: 40px;
+  font-size: var(--font-size-body);
+  color: var(--color-text);
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  border-right: 1px solid var(--color-border);
+}
+
+.groupCell {
+  align-items: flex-start;
+  padding-top: var(--space-2);
+  font-weight: 600;
+}
+
+.groupToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  color: var(--color-text);
+  text-align: left;
+}
+
+.groupToggle:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.caret {
+  display: inline-block;
+  width: 0.8em;
+  color: var(--color-text-muted);
+}
+
+.groupName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.titleCell {
+  gap: var(--space-1);
+  overflow: hidden;
+}
+
+.titleText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.owner {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+  flex-shrink: 0;
+}
+
+.collapsedHint {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+  font-style: italic;
+}
+
+.noBarMarker {
+  color: var(--color-text-muted);
+  cursor: help;
+  flex-shrink: 0;
+}
+
+.warnMarker {
+  color: var(--color-warning);
+  cursor: help;
+  flex-shrink: 0;
+}
+
+.statusCell {
+  gap: var(--space-1);
+}
+
+/* ---- Time cells ---- */
+.timeRow {
+  position: relative;
+  display: flex;
+}
+
+.timeCell {
+  box-sizing: border-box;
+  min-height: 40px;
+  background: var(--color-bg);
+  border-bottom: 1px solid var(--color-border);
+  border-right: 1px solid var(--color-border);
+}
+
+.todayLine {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: var(--gantt-week-width);
+  background: color-mix(in srgb, var(--color-warning) 14%, transparent);
+  border-left: 2px solid var(--color-warning);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ---- Bars ---- */
+.bar {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 18px;
+  box-sizing: border-box;
+  border: 1px solid transparent;
+  z-index: 2;
+}
+
+.barRoundLeft {
+  border-top-left-radius: var(--radius-full);
+  border-bottom-left-radius: var(--radius-full);
+}
+
+.barRoundRight {
+  border-top-right-radius: var(--radius-full);
+  border-bottom-right-radius: var(--radius-full);
+}
+
+.barPlanned {
+  background: color-mix(in srgb, var(--color-status-planned) 22%, transparent);
+  border-color: var(--color-status-planned);
+}
+
+.barInProgress {
+  background: var(--color-status-in-progress);
+  border-color: var(--color-status-in-progress);
+}
+
+.barDone {
+  background: var(--color-status-done);
+  border-color: var(--color-status-done);
+}
+
+.barWarn {
+  outline: 2px solid var(--color-warning);
+  outline-offset: 1px;
+}
+
+/* ---- State container ---- */
+.stateWrap {
+  padding: var(--space-6);
+}

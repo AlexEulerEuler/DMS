@@ -1,0 +1,95 @@
+.empty,
+.error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  text-align: center;
+  padding: var(--space-12) var(--space-4);
+  background: var(--color-surface);
+  border-radius: var(--radius-md);
+}
+
+.emptyTitle {
+  font-size: var(--font-size-section);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+}
+
+.emptyDescription {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-body);
+}
+
+.emptyAction {
+  margin-top: var(--space-2);
+}
+
+.errorTitle {
+  font-size: var(--font-size-section);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-error);
+}
+
+.errorDescription {
+  color: var(--color-text-muted);
+}
+
+.retryButton {
+  margin-top: var(--space-2);
+  border: var(--border-width-hairline) solid var(--color-border);
+  background: var(--color-bg);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-4);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+}
+
+.retryButton:hover {
+  background: var(--color-surface);
+}
+
+.skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.skeletonLine,
+.skeletonRow,
+.skeletonCard,
+.skeletonGanttRow {
+  background: linear-gradient(90deg, var(--color-surface) 25%, var(--color-border) 37%, var(--color-surface) 63%);
+  background-size: 400% 100%;
+  animation: shimmer 1.4s ease infinite;
+  border-radius: var(--radius-sm);
+}
+
+.skeletonLine {
+  height: 16px;
+  width: 100%;
+}
+
+.skeletonRow {
+  height: 40px;
+  width: 100%;
+}
+
+.skeletonCard {
+  height: 140px;
+  width: 100%;
+}
+
+.skeletonGanttRow {
+  height: 32px;
+  width: 100%;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0 50%;
+  }
+}

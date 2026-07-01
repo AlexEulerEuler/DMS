@@ -1,0 +1,22 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(17, 24, 39, 0.32);
+  z-index: var(--z-drawer);
+  display: flex;
+}
+
+.panel {
+  width: 260px;
+  max-width: 80vw;
+  height: 100%;
+  background: var(--color-bg);
+  box-shadow: var(--elevation-2);
+  padding: var(--space-4);
+  overflow-y: auto;
+}
+
+.header {
+  font-weight: var(--font-weight-semibold);
+  margin-bottom: var(--space-3);
+}

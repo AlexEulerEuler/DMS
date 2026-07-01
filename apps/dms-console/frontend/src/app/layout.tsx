@@ -1,19 +1,24 @@
 import type { Metadata } from "next";
+
+import { AppShell } from "@/components/AppShell";
+
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: "DMS Console",
-  description: "Development Management System console"
+  description: "Development Management System console",
 };
 
 export default function RootLayout({
-  children
+  children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
     <html lang="ko">
-      <body>{children}</body>
+      <body>
+        <AppShell>{children}</AppShell>
+      </body>
     </html>
   );
 }

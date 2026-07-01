@@ -16,6 +16,7 @@ import {
   deleteTask,
   errorMessage,
   listTasks,
+  updateTask,
 } from "@/lib/api-client";
 import type { TaskWritePayload } from "@/lib/api-client";
 import type { CommonStatus, TaskIA, TaskNodeType } from "@/lib/types";
@@ -76,7 +77,8 @@ export default function TaskIaPage() {
   );
 
   const [collapsedIds, setCollapsedIds] = useState<string[]>([]);
-  const [formOpen, setFormOpen] = useState(false);
+  // null = closed; { node: null } = create mode; { node } = edit mode.
+  const [formState, setFormState] = useState<{ node: TaskIA | null } | null>(null);
   const [viewNode, setViewNode] = useState<TaskIA | null>(null);
   const [pendingDelete, setPendingDelete] = useState<TaskIA | null>(null);
 
@@ -88,8 +90,8 @@ export default function TaskIaPage() {
     );
   };
 
-  const handleCreated = () => {
-    setFormOpen(false);
+  const handleSaved = () => {
+    setFormState(null);
     reload();
   };
 
@@ -109,7 +111,7 @@ export default function TaskIaPage() {
   const toolbar = (
     <div className={styles.toolbar}>
       <StatusFilterTabs value={statusFilter} options={FILTER_OPTIONS} onChange={setStatusFilter} />
-      <Button variant="primary" onClick={() => setFormOpen(true)}>
+      <Button variant="primary" onClick={() => setFormState({ node: null })}>
         항목 추가
       </Button>
     </div>
@@ -129,7 +131,7 @@ export default function TaskIaPage() {
           title="등록된 업무가 없습니다"
           description="구분·중분류·세부 업무를 추가해 업무 정보구조를 구성하세요."
           action={
-            <Button variant="primary" onClick={() => setFormOpen(true)}>
+            <Button variant="primary" onClick={() => setFormState({ node: null })}>
               항목 추가
             </Button>
           }
@@ -145,11 +147,12 @@ export default function TaskIaPage() {
         />
       )}
 
-      {formOpen ? (
+      {formState ? (
         <TaskNodeForm
           nodes={nodes}
-          onCancel={() => setFormOpen(false)}
-          onCreated={handleCreated}
+          editNode={formState.node}
+          onCancel={() => setFormState(null)}
+          onSaved={handleSaved}
         />
       ) : null}
 
@@ -157,6 +160,10 @@ export default function TaskIaPage() {
         <NodeViewModal
           node={viewNode}
           onClose={() => setViewNode(null)}
+          onRequestEdit={() => {
+            setFormState({ node: viewNode });
+            setViewNode(null);
+          }}
           onRequestDelete={() => setPendingDelete(viewNode)}
         />
       ) : null}
@@ -178,26 +185,45 @@ export default function TaskIaPage() {
 
 interface TaskNodeFormProps {
   nodes: TaskIA[];
+  /** null = create; a node = edit that node (label/parent/status/owner/dates). */
+  editNode: TaskIA | null;
   onCancel: () => void;
-  onCreated: () => void;
+  onSaved: () => void;
 }
 
-function TaskNodeForm({ nodes, onCancel, onCreated }: TaskNodeFormProps) {
-  const [draft, setDraft] = useState<FormDraft>(EMPTY_DRAFT);
+function draftFromNode(node: TaskIA): FormDraft {
+  return {
+    type: node.type,
+    title: node.title,
+    parentId: node.parentId ?? "",
+    status: node.status ?? "planned",
+    owner: node.owner ?? "",
+    startDate: node.startDate ?? null,
+    endDate: node.endDate ?? null,
+  };
+}
+
+function TaskNodeForm({ nodes, editNode, onCancel, onSaved }: TaskNodeFormProps) {
+  const isEdit = editNode !== null;
+  const [draft, setDraft] = useState<FormDraft>(() =>
+    editNode ? draftFromNode(editNode) : EMPTY_DRAFT,
+  );
   const [titleError, setTitleError] = useState<string>();
   const [submitError, setSubmitError] = useState<string>();
   const [saving, setSaving] = useState(false);
 
   // Parent candidates: existing category + group nodes (a 세부 업무/중분류 hangs under these).
+  // When editing, a node cannot be reparented under itself.
   const parentOptions = useMemo(
     () =>
       nodes
         .filter((node) => node.type === "category" || node.type === "group")
+        .filter((node) => !editNode || node.id !== editNode.id)
         .map((node) => ({
           value: node.id,
           label: `${TASK_NODE_TYPE_LABEL[node.type]} · ${node.title}`,
         })),
-    [nodes],
+    [nodes, editNode],
   );
 
   const isTask = draft.type === "task";
@@ -230,8 +256,12 @@ function TaskNodeForm({ nodes, onCancel, onCreated }: TaskNodeFormProps) {
 
     setSaving(true);
     try {
-      await createTask(payload);
-      onCreated();
+      if (isEdit) {
+        await updateTask(editNode.id, payload);
+      } else {
+        await createTask(payload);
+      }
+      onSaved();
     } catch (error) {
       setSubmitError(errorMessage(error));
     } finally {
@@ -243,7 +273,7 @@ function TaskNodeForm({ nodes, onCancel, onCreated }: TaskNodeFormProps) {
     <Modal
       open
       onClose={onCancel}
-      title="항목 추가"
+      title={isEdit ? "항목 편집" : "항목 추가"}
       dismissible={!saving}
       footer={
         <>
@@ -262,6 +292,7 @@ function TaskNodeForm({ nodes, onCancel, onCreated }: TaskNodeFormProps) {
           value={draft.type}
           options={TYPE_OPTIONS}
           onChange={(value) => update("type", value)}
+          disabled={isEdit}
         />
 
         <TextField
@@ -327,10 +358,11 @@ function TaskNodeForm({ nodes, onCancel, onCreated }: TaskNodeFormProps) {
 interface NodeViewModalProps {
   node: TaskIA;
   onClose: () => void;
+  onRequestEdit: () => void;
   onRequestDelete: () => void;
 }
 
-function NodeViewModal({ node, onClose, onRequestDelete }: NodeViewModalProps) {
+function NodeViewModal({ node, onClose, onRequestEdit, onRequestDelete }: NodeViewModalProps) {
   const isTask = node.type === "task";
   const isContainer = node.type === "category" || node.type === "group";
 
@@ -346,7 +378,10 @@ function NodeViewModal({ node, onClose, onRequestDelete }: NodeViewModalProps) {
               삭제
             </Button>
           ) : null}
-          <Button variant="secondary" onClick={onClose}>
+          <Button variant="secondary" onClick={onRequestEdit}>
+            편집
+          </Button>
+          <Button variant="ghost" onClick={onClose}>
             닫기
           </Button>
         </>

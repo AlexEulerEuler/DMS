@@ -68,6 +68,7 @@ export default function AgentDetailPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
 
   const [confirmLeave, setConfirmLeave] = useState(false);
+  const [pendingNav, setPendingNav] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -134,12 +135,15 @@ export default function AgentDetailPage() {
     }
   }
 
-  function goToList() {
+  // Any exit path (목록으로 button OR the breadcrumb) routes through here so an
+  // unsaved change always prompts before leaving (screens.md A-7).
+  function guardedNavigate(to: string) {
     if (dirty) {
+      setPendingNav(to);
       setConfirmLeave(true);
       return;
     }
-    router.push("/agents");
+    router.push(to);
   }
 
   async function handleDelete() {
@@ -203,6 +207,7 @@ export default function AgentDetailPage() {
     <div>
       <PageHeader
         breadcrumb={[{ label: "Agent", to: "/agents" }, { label: form.name || "에이전트 상세" }]}
+        onBreadcrumbNavigate={guardedNavigate}
         title={form.name || "에이전트 상세"}
         summary={
           <span
@@ -335,7 +340,7 @@ export default function AgentDetailPage() {
             삭제
           </Button>
           <div style={{ display: "flex", gap: "var(--space-3)" }}>
-            <Button variant="secondary" onClick={goToList} disabled={saving}>
+            <Button variant="secondary" onClick={() => guardedNavigate("/agents")} disabled={saving}>
               목록으로
             </Button>
             <Button variant="primary" onClick={handleSave} disabled={saving || !dirty}>
@@ -347,18 +352,28 @@ export default function AgentDetailPage() {
 
       <Modal
         open={confirmLeave}
-        onClose={() => setConfirmLeave(false)}
+        onClose={() => {
+          setConfirmLeave(false);
+          setPendingNav(null);
+        }}
         title="저장하지 않은 변경"
         footer={
           <>
-            <Button variant="secondary" onClick={() => setConfirmLeave(false)}>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setConfirmLeave(false);
+                setPendingNav(null);
+              }}
+            >
               계속 편집
             </Button>
             <Button
               variant="danger"
               onClick={() => {
                 setConfirmLeave(false);
-                router.push("/agents");
+                router.push(pendingNav ?? "/agents");
+                setPendingNav(null);
               }}
             >
               저장 없이 이동

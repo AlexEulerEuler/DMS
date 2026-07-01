@@ -13,9 +13,22 @@ export interface PageHeaderProps {
   summary?: ReactNode;
   actions?: ReactNode;
   breadcrumb?: BreadcrumbItem[];
+  /**
+   * Optional interceptor for breadcrumb navigation. When provided, breadcrumb
+   * links call this instead of navigating directly — used to guard unsaved
+   * changes (e.g. Agent detail confirms before leaving).
+   */
+  onBreadcrumbNavigate?: (to: string) => void;
 }
 
-export function PageHeader({ title, description, summary, actions, breadcrumb }: PageHeaderProps) {
+export function PageHeader({
+  title,
+  description,
+  summary,
+  actions,
+  breadcrumb,
+  onBreadcrumbNavigate,
+}: PageHeaderProps) {
   return (
     <div className={styles.header}>
       {breadcrumb && breadcrumb.length > 0 ? (
@@ -24,7 +37,18 @@ export function PageHeader({ title, description, summary, actions, breadcrumb }:
             <span key={`${item.label}-${index}`}>
               {index > 0 ? <span className={styles.breadcrumbSep}>/</span> : null}
               {item.to ? (
-                <a href={item.to} className={styles.breadcrumbLink}>
+                <a
+                  href={item.to}
+                  className={styles.breadcrumbLink}
+                  onClick={
+                    onBreadcrumbNavigate
+                      ? (event) => {
+                          event.preventDefault();
+                          onBreadcrumbNavigate(item.to as string);
+                        }
+                      : undefined
+                  }
+                >
                   {item.label}
                 </a>
               ) : (

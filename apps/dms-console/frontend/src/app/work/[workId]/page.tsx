@@ -8,6 +8,8 @@ import {
   getWork,
   updateWork,
   deleteWork,
+  getIssue,
+  getAgent,
   listIssues,
   listAgents,
   ApiError,
@@ -26,10 +28,41 @@ import { LoadingSkeleton, ErrorState } from "@/components/StateViews";
 import { WorkForm, dateRangeError } from "../WorkForm";
 import type { WorkFormValues } from "../WorkForm";
 
+/**
+ * Resolved state of a linked ref. 'broken' means the target genuinely no longer
+ * exists (single-resource 404); 'unresolved' means we couldn't confirm (transient
+ * error) so we still offer a bare link rather than falsely marking it deleted.
+ */
+type LinkRef = { kind: "ok"; label: string } | { kind: "broken" } | { kind: "unresolved" };
+
 interface DetailData {
   work: WorkItem;
   issues: IssueView[];
   agents: Agent[];
+  linkedIssueRef: LinkRef | null;
+  linkedAgentRef: LinkRef | null;
+}
+
+async function resolveIssueRef(linkedIssue?: string | null): Promise<LinkRef | null> {
+  if (!linkedIssue) return null;
+  try {
+    const issue = await getIssue(linkedIssue);
+    return { kind: "ok", label: `#${issue.id} ${issue.title}` };
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return { kind: "broken" };
+    return { kind: "unresolved" };
+  }
+}
+
+async function resolveAgentRef(linkedAgent?: string | null): Promise<LinkRef | null> {
+  if (!linkedAgent) return null;
+  try {
+    const agent = await getAgent(linkedAgent);
+    return { kind: "ok", label: agent.name };
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return { kind: "broken" };
+    return { kind: "unresolved" };
+  }
 }
 
 function toFormValues(work: WorkItem): WorkFormValues {
@@ -53,11 +86,18 @@ export default function WorkDetailPage() {
   const { state, reload } = useAsyncData<DetailData>(async () => {
     // getWork is the source of truth; a 404 here propagates for not-found UI.
     const work = await getWork(workId);
-    // Connection candidates are best-effort and never block the detail view.
-    const [issuesResult, agentsResult] = await Promise.allSettled([listIssues({}), listAgents({})]);
-    const issues = issuesResult.status === "fulfilled" ? (issuesResult.value as Page<IssueView>).items : [];
-    const agents = agentsResult.status === "fulfilled" ? (agentsResult.value as Page<Agent>).items : [];
-    return { work, issues, agents };
+    // Connection candidates (for the link selects) are best-effort and never block the detail view.
+    // The currently-linked ref is resolved via single-resource lookups so a CLOSED issue (or one past
+    // the first page) is NOT mistaken for a deleted/broken link.
+    const [issuesResult, agentsResult, linkedIssueRef, linkedAgentRef] = await Promise.all([
+      listIssues({}).catch(() => null),
+      listAgents({}).catch(() => null),
+      resolveIssueRef(work.linkedIssue),
+      resolveAgentRef(work.linkedAgent),
+    ]);
+    const issues = issuesResult ? (issuesResult as Page<IssueView>).items : [];
+    const agents = agentsResult ? (agentsResult as Page<Agent>).items : [];
+    return { work, issues, agents, linkedIssueRef, linkedAgentRef };
   }, [workId]);
 
   const [values, setValues] = useState<WorkFormValues | null>(null);
@@ -107,7 +147,7 @@ export default function WorkDetailPage() {
     );
   }
 
-  const { work, issues, agents } = state.data;
+  const { work, issues, agents, linkedIssueRef, linkedAgentRef } = state.data;
 
   const issueOptions = issues.map((issue) => ({
     value: String(issue.id),
@@ -193,8 +233,8 @@ export default function WorkDetailPage() {
       <LinkedRef
         linkedIssue={work.linkedIssue}
         linkedAgent={work.linkedAgent}
-        issues={issues}
-        agents={agents}
+        issueRef={linkedIssueRef}
+        agentRef={linkedAgentRef}
       />
 
       {saveError ? (
@@ -239,60 +279,57 @@ export default function WorkDetailPage() {
 interface LinkedRefProps {
   linkedIssue?: string | null;
   linkedAgent?: string | null;
-  issues: IssueView[];
-  agents: Agent[];
+  issueRef: LinkRef | null;
+  agentRef: LinkRef | null;
 }
 
-function LinkedRef({ linkedIssue, linkedAgent, issues, agents }: LinkedRefProps) {
-  if (!linkedIssue && !linkedAgent) return null;
+function BrokenLink({ text }: { text: string }) {
+  return (
+    <span
+      aria-disabled="true"
+      title="연결 대상이 삭제되었습니다 (끊어진 링크)"
+      style={{ color: "var(--color-text-muted)", textDecoration: "line-through", cursor: "not-allowed" }}
+    >
+      {text} (삭제됨)
+    </span>
+  );
+}
 
-  const issue = linkedIssue ? issues.find((item) => String(item.id) === String(linkedIssue)) : undefined;
-  const agent = linkedAgent ? agents.find((item) => item.id === linkedAgent) : undefined;
+function LinkedRef({ linkedIssue, linkedAgent, issueRef, agentRef }: LinkedRefProps) {
+  if (!linkedIssue && !linkedAgent) return null;
 
   return (
     <div style={{ marginTop: "var(--space-6)" }}>
       <h2 style={{ fontSize: "var(--font-size-section)", marginBottom: "var(--space-3)" }}>연결</h2>
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
-        {linkedIssue ? (
+        {linkedIssue && issueRef ? (
           <div>
             <span style={{ color: "var(--color-text-muted)", marginRight: "var(--space-2)" }}>연결 이슈:</span>
-            {issue ? (
+            {issueRef.kind === "broken" ? (
+              <BrokenLink text={`#${linkedIssue}`} />
+            ) : (
               <Link
                 href={`/issues/${linkedIssue}`}
                 style={{ color: "var(--color-primary)", textDecoration: "underline" }}
               >
-                #{linkedIssue} {issue.title}
+                {issueRef.kind === "ok" ? issueRef.label : `#${linkedIssue}`}
               </Link>
-            ) : (
-              <span
-                aria-disabled="true"
-                title="연결된 이슈를 찾을 수 없습니다 (끊어진 링크)"
-                style={{ color: "var(--color-text-muted)", textDecoration: "line-through", cursor: "not-allowed" }}
-              >
-                #{linkedIssue} (삭제됨)
-              </span>
             )}
           </div>
         ) : null}
 
-        {linkedAgent ? (
+        {linkedAgent && agentRef ? (
           <div>
             <span style={{ color: "var(--color-text-muted)", marginRight: "var(--space-2)" }}>연결 에이전트:</span>
-            {agent ? (
+            {agentRef.kind === "broken" ? (
+              <BrokenLink text={linkedAgent} />
+            ) : (
               <Link
                 href={`/agents/${linkedAgent}`}
                 style={{ color: "var(--color-primary)", textDecoration: "underline" }}
               >
-                {agent.name}
+                {agentRef.kind === "ok" ? agentRef.label : linkedAgent}
               </Link>
-            ) : (
-              <span
-                aria-disabled="true"
-                title="연결된 에이전트를 찾을 수 없습니다 (끊어진 링크)"
-                style={{ color: "var(--color-text-muted)", textDecoration: "line-through", cursor: "not-allowed" }}
-              >
-                {linkedAgent} (삭제됨)
-              </span>
             )}
           </div>
         ) : null}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { createWork, listIssues, listAgents, errorMessage } from "@/lib/api-client";
@@ -27,6 +27,9 @@ async function loadCandidates(): Promise<Candidates> {
   return { issues, agents };
 }
 
+// Entry views we're willing to return to after save (screens.md B-3: "직전 뷰로 복귀").
+const RETURN_VIEWS = ["/work/backlog", "/work/kanban"];
+
 export default function NewWorkPage() {
   const router = useRouter();
   const { state } = useAsyncData(loadCandidates, []);
@@ -35,6 +38,14 @@ export default function NewWorkPage() {
   const [submitting, setSubmitting] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [showTitleError, setShowTitleError] = useState(false);
+  // Which view we came from (Backlog vs Kanban), read client-side to avoid a
+  // Suspense boundary for useSearchParams on this statically-prerendered page.
+  const [returnView, setReturnView] = useState("/work/backlog");
+
+  useEffect(() => {
+    const from = new URLSearchParams(window.location.search).get("from");
+    if (from && RETURN_VIEWS.includes(from)) setReturnView(from);
+  }, []);
 
   const candidates: Candidates = state.status === "success" ? state.data : { issues: [], agents: [] };
   const issueOptions = candidates.issues.map((issue) => ({
@@ -70,7 +81,7 @@ export default function NewWorkPage() {
         linkedIssue: values.linkedIssue || null,
         linkedAgent: values.linkedAgent || null,
       });
-      router.push("/work/backlog");
+      router.push(returnView);
     } catch (error) {
       setSaveError(errorMessage(error));
       setSubmitting(false);

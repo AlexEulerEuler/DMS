@@ -11,6 +11,8 @@ export interface SecondaryNavItem {
   key: string;
   label: string;
   to: string;
+  /** One-line doc description (Overview sub-docs render this in PageHeader). */
+  description?: string;
 }
 
 export interface SecondaryNavSection {
@@ -28,18 +30,18 @@ export const PRIMARY_NAV: PrimaryNavItem[] = [
 ];
 
 export const OVERVIEW_DOCS: SecondaryNavItem[] = [
-  { key: "overview", label: "프로젝트 개요", to: "/overview" },
-  { key: "glossary", label: "도메인 용어", to: "/overview/glossary" },
-  { key: "pipeline", label: "전체 파이프라인", to: "/overview/pipeline" },
-  { key: "modules", label: "서비스 모듈", to: "/overview/modules" },
-  { key: "api", label: "API 엔드포인트", to: "/overview/api" },
-  { key: "cli", label: "CLI 명령어", to: "/overview/cli" },
-  { key: "folder-structure", label: "폴더 구조", to: "/overview/folder-structure" },
-  { key: "data", label: "주요 데이터", to: "/overview/data" },
-  { key: "tech-stack", label: "기술 스택", to: "/overview/tech-stack" },
-  { key: "env", label: "환경 변수", to: "/overview/env" },
-  { key: "runbook", label: "실행 방법", to: "/overview/runbook" },
-  { key: "limitations", label: "알려진 한계", to: "/overview/limitations" },
+  { key: "overview", label: "프로젝트 개요", to: "/overview", description: "입력·출력·워크플로우 요약" },
+  { key: "glossary", label: "도메인 용어", to: "/overview/glossary", description: "콘솔 핵심 용어 정의" },
+  { key: "pipeline", label: "전체 파이프라인", to: "/overview/pipeline", description: "입력→처리→출력 단계 상세" },
+  { key: "modules", label: "서비스 모듈", to: "/overview/modules", description: "구성 모듈과 책임 범위" },
+  { key: "api", label: "API 엔드포인트", to: "/overview/api", description: "제공 API 목록·용도" },
+  { key: "cli", label: "CLI 명령어", to: "/overview/cli", description: "생성 실행 등 명령어 레퍼런스" },
+  { key: "folder-structure", label: "폴더 구조", to: "/overview/folder-structure", description: "코드·산출물 디렉터리 구조" },
+  { key: "data", label: "주요 데이터", to: "/overview/data", description: "생성 산출물 조회·다운로드" },
+  { key: "tech-stack", label: "기술 스택", to: "/overview/tech-stack", description: "사용 기술·의존성" },
+  { key: "env", label: "환경 변수", to: "/overview/env", description: "구동에 필요한 환경 변수" },
+  { key: "runbook", label: "실행 방법", to: "/overview/runbook", description: "로컬·운영 실행 절차" },
+  { key: "limitations", label: "알려진 한계", to: "/overview/limitations", description: "제약·미지원 사항" },
 ];
 
 const SECONDARY_NAV: Record<string, SecondaryNavSection[]> = {

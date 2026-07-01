@@ -264,10 +264,11 @@ export default function OverviewDocPage() {
 
   const { doc, outputs } = state.data;
   const hasContent = typeof doc.content === "string" && doc.content.trim() !== "";
+  const description = OVERVIEW_DOCS.find((item) => item.key === slug)?.description;
 
   return (
     <div>
-      <PageHeader title={doc.title} />
+      <PageHeader title={doc.title} description={description} />
       {hasContent ? <DocContent content={doc.content} /> : <EmptyDocState slug={slug} />}
       {isData && outputs ? <DownloadList outputs={outputs} /> : null}
     </div>

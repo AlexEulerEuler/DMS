@@ -53,7 +53,7 @@ export default function BacklogPage() {
           : "populated";
 
   const newWorkButton = (
-    <Button variant="primary" onClick={() => router.push("/work/new")}>
+    <Button variant="primary" onClick={() => router.push("/work/new?from=/work/backlog")}>
       작업 등록
     </Button>
   );

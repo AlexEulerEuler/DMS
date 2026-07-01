@@ -15,19 +15,32 @@ import { LoadingSkeleton, ErrorState } from "@/components/StateViews";
 
 const STATUS_ORDER: WorkStatus[] = ["planned", "in_progress", "review", "done"];
 
+// The board must show the FULL work set (same set as Backlog), but the API caps
+// each page at 25 (api-contract §1.3). Aggregate across pages client-side.
+async function fetchAllWork(): Promise<WorkItem[]> {
+  const first = await listWork({ page: 1, size: 25 });
+  const items = [...first.items];
+  const totalPages = Math.max(1, Math.ceil(first.total / (first.size || 25)));
+  for (let p = 2; p <= totalPages; p += 1) {
+    const next = await listWork({ page: p, size: 25 });
+    items.push(...next.items);
+  }
+  return items;
+}
+
 export default function KanbanPage() {
   const router = useRouter();
-  const { state, reload } = useAsyncData(() => listWork({ page: 1 }), []);
+  const { state, reload } = useAsyncData(fetchAllWork, []);
 
   // Local copy so drag/keyboard moves reflect instantly (optimistic).
   const [cards, setCards] = useState<WorkItem[]>([]);
 
   useEffect(() => {
-    if (state.status === "success") setCards(state.data.items);
+    if (state.status === "success") setCards(state.data);
   }, [state]);
 
   const newWorkButton = (
-    <Button variant="primary" onClick={() => router.push("/work/new")}>
+    <Button variant="primary" onClick={() => router.push("/work/new?from=/work/kanban")}>
       작업 등록
     </Button>
   );

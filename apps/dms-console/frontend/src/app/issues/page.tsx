@@ -14,7 +14,7 @@ import { IssueStateChip, PriorityChip, LabelChip } from "@/components/Chips";
 import { Pagination } from "@/components/Pagination";
 import { useAsyncData } from "@/lib/hooks";
 import { listIssues } from "@/lib/api-client";
-import type { IssueState, IssueView, Priority } from "@/lib/types";
+import type { GhIssue, IssueState, Priority } from "@/lib/types";
 import { PRIORITY_LABEL } from "@/lib/types";
 
 const PAGE_SIZE = 25;
@@ -57,8 +57,8 @@ export default function IssuesListPage() {
           ? "empty"
           : "populated";
 
-  const columns: Column<IssueView>[] = [
-    { key: "id", header: "#", width: 64, render: (row) => `#${row.id}` },
+  const columns: Column<GhIssue>[] = [
+    { key: "number", header: "#", width: 64, render: (row) => `#${row.number}` },
     { key: "title", header: "제목", render: (row) => row.title },
     { key: "state", header: "상태", width: 96, render: (row) => <IssueStateChip state={row.state} size="sm" /> },
     {
@@ -82,12 +82,12 @@ export default function IssuesListPage() {
         ),
     },
     {
-      key: "assignee",
+      key: "assignees",
       header: "담당자",
       width: 140,
       render: (row) =>
-        row.assignee ? (
-          row.assignee
+        row.assignees.length > 0 ? (
+          row.assignees.join(", ")
         ) : (
           <span style={{ color: "var(--color-text-muted)" }}>미지정</span>
         ),
@@ -100,42 +100,20 @@ export default function IssuesListPage() {
     setPage(1);
   }
 
-  function changePriority(next: Priority | "") {
-    setPriority(next);
-    setPage(1);
-  }
-
-  function changeQuery(next: string) {
-    setQ(next);
-    setPage(1);
-  }
-
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-6)" }}>
       <PageHeader
         title="Issues"
-        description="GitHub 이슈를 조회하고 작업과 연결"
+        description="GitHub 이슈 미러 (읽기 전용 — 등록·수정은 GitHub에서)"
         summary={state === "open" ? `열린 이슈 ${total}` : `닫힌 이슈 ${total}`}
         actions={
-          <>
-            <Button variant="secondary" onClick={reload}>
-              새로고침
-            </Button>
-            <Button variant="primary" onClick={() => router.push("/issues/new")}>
-              이슈 등록
-            </Button>
-          </>
+          <Button variant="secondary" onClick={reload}>
+            새로고침
+          </Button>
         }
       />
 
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          alignItems: "center",
-          gap: "var(--space-3)",
-        }}
-      >
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "var(--space-3)" }}>
         <div role="tablist" aria-label="아카이브 필터" style={{ display: "inline-flex", gap: "var(--space-2)" }}>
           <Button
             variant={state === "open" ? "primary" : "secondary"}
@@ -155,27 +133,32 @@ export default function IssuesListPage() {
         <StatusFilterSelect
           value={priority}
           options={PRIORITY_OPTIONS}
-          onChange={changePriority}
+          onChange={(next) => {
+            setPriority(next);
+            setPage(1);
+          }}
           allLabel="전체 우선순위"
         />
         <div style={{ flex: 1, minWidth: "180px" }}>
-          <SearchInput value={q} onChange={changeQuery} placeholder="제목 검색" />
+          <SearchInput
+            value={q}
+            onChange={(next) => {
+              setQ(next);
+              setPage(1);
+            }}
+            placeholder="제목 검색"
+          />
         </div>
       </div>
 
       <DataTable
         columns={columns}
         rows={items}
-        getRowId={(row) => String(row.id)}
-        onRowClick={(row) => router.push(`/issues/${row.id}`)}
+        getRowId={(row) => String(row.number)}
+        onRowClick={(row) => router.push(`/issues/${row.number}`)}
         state={tableState}
         emptyTitle="이슈가 없습니다"
-        emptyDescription={state === "open" ? "새 이슈를 등록해보세요." : "닫힌 이슈가 없습니다."}
-        emptyAction={
-          <Button variant="primary" onClick={() => router.push("/issues/new")}>
-            이슈 등록
-          </Button>
-        }
+        emptyDescription="이슈 등록은 GitHub에서 합니다."
         errorDescription="GitHub 연동에 실패했습니다"
         onRetry={reload}
       />

@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Partially superseded by [ADR-0002](0002-git-native-agent-workflow.md) — FastAPI 백엔드는 제거되었고 Next.js 단독(GitHub 직접 조회)으로 전환됨. Next.js 채택 부분은 유효.
 
 ## Context
 

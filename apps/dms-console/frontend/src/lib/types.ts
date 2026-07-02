@@ -1,10 +1,10 @@
 /**
- * Entity types + canonical enums (source of truth: docs/spec/data-schema.md,
- * docs/spec/README.md §3). Code uses the English enum keys; screens map them
- * to Korean labels via the *_LABEL records below.
+ * 화면 타입 + canonical enum. 데이터 정본은 GitHub(이슈·PR·커밋)과 리포 문서이며(ADR-0002),
+ * 여기의 타입은 서버 데이터층(lib/server/*)이 유도한 읽기 전용 뷰다.
+ * enum 라벨의 정본: apps/dms-console/docs/ia/status-taxonomy.md.
  */
 
-export type DateTimeString = string; // ISO 8601, e.g. "2026-07-01T09:00:00Z"
+export type DateTimeString = string; // ISO 8601
 export type DateString = string; // "YYYY-MM-DD"
 
 export type CommonStatus = "planned" | "in_progress" | "done";
@@ -13,9 +13,9 @@ export type AgentStatus = "draft" | "confirmed" | "on_hold";
 export type IssueState = "open" | "closed";
 export type Priority = "urgent" | "high" | "normal" | "low";
 export type TaskNodeType = "category" | "group" | "task";
-export type ExportFormat = "json" | "xlsx" | "doc";
-export type ParsedStatus = "pending" | "processing" | "done" | "error";
-export type MasterListStatus = "draft" | "confirmed";
+
+/** 칸반 단계 — GitHub 사실에서 유도 (정본: docs/policy/10-dev-workflow.md §1) */
+export type WorkStage = "backlog" | "todo" | "in_progress" | "review" | "done" | "blocked";
 
 export const COMMON_STATUS_LABEL: Record<CommonStatus, string> = {
   planned: "진행예정",
@@ -28,6 +28,15 @@ export const WORK_STATUS_LABEL: Record<WorkStatus, string> = {
   in_progress: "진행중",
   review: "리뷰중",
   done: "완료",
+};
+
+export const WORK_STAGE_LABEL: Record<WorkStage, string> = {
+  backlog: "정의중",
+  todo: "진행예정",
+  in_progress: "진행중",
+  review: "리뷰중",
+  done: "완료",
+  blocked: "차단됨",
 };
 
 export const AGENT_STATUS_LABEL: Record<AgentStatus, string> = {
@@ -54,137 +63,113 @@ export const TASK_NODE_TYPE_LABEL: Record<TaskNodeType, string> = {
   task: "세부 업무",
 };
 
-export const EXPORT_FORMAT_LABEL: Record<ExportFormat, string> = {
-  json: "JSON",
-  xlsx: "XLSX",
-  doc: "문서",
-};
-
 // ---------------------------------------------------------------------------
-// Project / Overview
+// GitHub 유도 뷰
 // ---------------------------------------------------------------------------
 
-export interface ProjectMeta {
-  version?: string;
-  language?: string;
-  branch?: string;
-  package?: string;
-  apiEndpoint?: string;
-}
-
-export interface PipelineInput {
-  key: string;
+export interface LinkedPull {
+  number: number;
   title: string;
-  description?: string;
+  draft: boolean;
+  htmlUrl: string;
+  state: "open" | "closed" | "merged";
+  author: string | null;
+  createdAt: DateTimeString;
 }
 
-export interface PipelineOutput {
+export interface GhIssue {
+  number: number;
   title: string;
-  description?: string;
+  body: string;
+  state: IssueState;
+  labels: string[];
+  assignees: string[];
+  author: string | null;
+  createdAt: DateTimeString;
+  closedAt: DateTimeString | null;
+  htmlUrl: string;
+  commentsCount: number;
+  priority: Priority; // P0~P3 라벨에서 유도
+  taskId: string | null; // task:T-### 라벨에서 유도
+  stage: WorkStage;
+  linkedPulls: LinkedPull[];
 }
 
-export interface WorkflowStep {
-  order: number;
-  label: string;
-}
-
-export interface PipelineSummary {
-  inputs: PipelineInput[];
-  outputs: PipelineOutput[];
-  workflowSteps: WorkflowStep[];
-}
-
-export interface OverviewDoc {
-  slug: string;
+export interface TimelineEvent {
+  kind: "issue_opened" | "comment" | "pr" | "closed";
+  actor: string | null;
+  at: DateTimeString;
   title: string;
-  content: string;
+  body?: string;
+  htmlUrl?: string;
 }
 
-export interface MasterListItem {
-  id: string;
-  title?: string;
+export interface IssueDetail {
+  issue: GhIssue;
+  timeline: TimelineEvent[];
 }
 
-export interface MasterList {
-  id: string;
-  projectId: string;
-  items: MasterListItem[];
-  version?: string;
-  generatedAt?: DateTimeString;
-  status?: MasterListStatus;
-  downloadUrl?: string;
+export interface ActivityItem {
+  kind: "commit" | "pr";
+  title: string;
+  actor: string | null;
+  agentInvolved: boolean;
+  at: DateTimeString;
+  htmlUrl: string;
+  ref: string; // sha 앞 7자리 또는 #PR번호
 }
 
-export interface WbsMilestoneView {
-  id: string;
-  type: "A" | "B";
-  label: string;
-  date: DateString;
-}
-
-export interface GeneratedSchedule {
-  id: string;
-  projectId: string;
-  milestones: { id: string; title?: string; date?: DateString }[];
-  basedOn?: string;
-  generatedAt?: DateTimeString;
-  downloadUrl?: string;
-}
-
-export interface ExportFile {
-  id: string;
-  projectId: string;
-  format: ExportFormat;
-  sourceOutput?: string;
-  createdAt?: DateTimeString;
-  downloadUrl?: string;
-}
-
-export interface OverviewOutputs {
-  masterLists: MasterList[];
-  generatedSchedules: GeneratedSchedule[];
-  exportFiles: ExportFile[];
+export interface HomeSummary {
+  openWork: number;
+  readyWork: number;
+  inProgress: number;
+  inReview: number;
+  mergedThisWeek: number;
+  priorityCounts: Record<Priority, number>;
+  recent: ActivityItem[];
+  syncNote: string | null; // 목록 상한(100건) 초과 등 커버리지 경고
 }
 
 // ---------------------------------------------------------------------------
-// Pipeline inputs (runtime.md §2)
+// 계획 (docs/plan/tasks.yaml)
 // ---------------------------------------------------------------------------
 
-export type InputSourceType = "document" | "master-list" | "baseline";
-
-export interface SourceDocument {
-  id: string;
-  projectId: string;
-  fileName: string;
-  fileType?: string | null;
-  uploadedAt?: string | null;
-  parsedStatus?: ParsedStatus | null;
+export interface PlanNode {
+  id: string; // T-###
+  type: TaskNodeType;
+  title: string;
+  parent: string | null;
+  owner: string | null;
+  start: DateString | null;
+  end: DateString | null;
+  progressManual: number | null;
 }
 
-export interface ExistingMasterListInput {
-  id: string;
-  projectId: string;
-  fileName?: string | null;
-  version?: string | null;
-  itemCount?: number | null;
-}
-
-export interface BaselineScheduleInput {
-  id: string;
-  projectId: string;
-  fileName?: string | null;
-  startDate?: string | null;
-  endDate?: string | null;
-}
-
-export interface InputsResponse {
-  documents: SourceDocument[];
-  masterLists: ExistingMasterListInput[];
-  baselines: BaselineScheduleInput[];
+export interface WbsRow extends PlanNode {
+  progress: number;
+  openIssues: number;
+  closedIssues: number;
+  delayed: boolean;
 }
 
 // ---------------------------------------------------------------------------
-// TaskIA
+// 문서 브라우저
+// ---------------------------------------------------------------------------
+
+export interface DocEntry {
+  name: string;
+  path: string;
+  type: "file" | "dir";
+}
+
+export interface DocContent {
+  path: string;
+  frontMatter: Record<string, string | undefined> | null;
+  body: string;
+}
+
+// ---------------------------------------------------------------------------
+// 기존 공유 컴포넌트 계약 (TaskTree·GanttGrid·KanbanBoard가 사용)
 // ---------------------------------------------------------------------------
 
 export interface TaskIA {
@@ -199,14 +184,7 @@ export interface TaskIA {
   endDate?: DateString;
   progress?: number;
   order?: number;
-  linkedWbsId?: string;
-  createdAt?: DateTimeString;
-  updatedAt?: DateTimeString;
 }
-
-// ---------------------------------------------------------------------------
-// WBSItem — derived view
-// ---------------------------------------------------------------------------
 
 export interface WBSItem {
   id: string;
@@ -220,6 +198,13 @@ export interface WBSItem {
   order?: number;
 }
 
+export interface WbsMilestoneView {
+  id: string;
+  type: "A" | "B";
+  label: string;
+  date: DateString;
+}
+
 export interface WbsResponse {
   items: WBSItem[];
   milestones: WbsMilestoneView[];
@@ -227,67 +212,17 @@ export interface WbsResponse {
   timeAxis: { startDate: DateString | null; endDate: DateString | null };
 }
 
-// ---------------------------------------------------------------------------
-// Issue — GitHub mirror + local overlay
-// ---------------------------------------------------------------------------
-
-/**
- * Wire shape returned by the API. NOTE: data-schema.md names this field
- * `number`, but api-contract.md's actual JSON examples use `id` — we follow
- * the wire contract (api-contract.md), matching the backend implementation.
- */
-export interface IssueView {
-  id: number;
-  title: string;
-  body: string;
-  state: IssueState;
-  labels: string[];
-  assignee: string | null;
-  createdAt: DateTimeString;
-  htmlUrl: string;
-  priority: Priority;
-  linkedWorkItems: string[];
-}
-
-// ---------------------------------------------------------------------------
-// WorkItem
-// ---------------------------------------------------------------------------
-
+/** 칸반 카드 — 이슈에서 유도 (id = 이슈 번호 문자열) */
 export interface WorkItem {
   id: string;
   title: string;
   owner?: string | null;
   status?: WorkStatus;
-  startDate?: string | null;
-  endDate?: string | null;
-  description?: string | null;
-  linkedIssue?: string | null;
-  linkedAgent?: string | null;
-  // Agent loop (runtime.md §4): the agent that claimed this work item, and when.
-  executor?: string | null;
-  claimedAt?: string | null;
-  // Decomposition (runtime.md §8): parent work item when split from a larger goal.
-  parentId?: string | null;
+  stage?: WorkStage;
+  priority?: Priority;
+  taskId?: string | null;
+  htmlUrl?: string;
 }
-
-// ---------------------------------------------------------------------------
-// Agent
-// ---------------------------------------------------------------------------
-
-export interface Agent {
-  id: string;
-  name: string;
-  status?: AgentStatus;
-  description?: string;
-  planNote?: string;
-  references?: string[];
-  createdAt?: DateTimeString;
-  updatedAt?: DateTimeString;
-}
-
-// ---------------------------------------------------------------------------
-// List/page envelope (api-contract.md §1.3)
-// ---------------------------------------------------------------------------
 
 export interface Page<T> {
   items: T[];

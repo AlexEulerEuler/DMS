@@ -9,6 +9,11 @@ export function formatDate(value?: string | null): string {
   return value.slice(0, 10);
 }
 
+export function formatDateTime(value?: string | null): string {
+  if (!value) return "-";
+  return value.slice(0, 16).replace("T", " ");
+}
+
 export function progressFromStatus(status: string | undefined, progress?: number | null): number {
   if (progress !== undefined && progress !== null) return progress;
   if (status === "done") return 100;

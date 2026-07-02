@@ -1,246 +1,114 @@
 "use client";
 
-import type { ReactNode } from "react";
+import Link from "next/link";
 
 import { Card, CardGrid } from "@/components/Card";
 import { PageHeader } from "@/components/PageHeader";
+import { Badge } from "@/components/Badge";
+import { Button } from "@/components/Button";
 import { ErrorState, LoadingSkeleton } from "@/components/StateViews";
-import { getOverviewDoc, getOverviewMeta, errorMessage } from "@/lib/api-client";
+import { errorMessage, getSummary } from "@/lib/api-client";
 import { useAsyncData } from "@/lib/hooks";
-import type { OverviewDoc, PipelineSummary, ProjectMeta } from "@/lib/types";
+import { formatDateTime } from "@/lib/format";
+import { PRIORITY_LABEL } from "@/lib/types";
+import type { Priority } from "@/lib/types";
 
-interface OverviewLanding {
-  meta: ProjectMeta;
-  pipeline: PipelineSummary;
-  doc: OverviewDoc;
-}
+/** 홈 — GitHub 사실에서 유도된 진행 요약 + 최근 활동 피드 (읽기 전용 투영). */
+export default function OverviewHomePage() {
+  const { state, reload } = useAsyncData(getSummary, []);
 
-const META_FIELDS: { key: keyof ProjectMeta; label: string }[] = [
-  { key: "version", label: "버전" },
-  { key: "language", label: "언어" },
-  { key: "branch", label: "브랜치" },
-  { key: "package", label: "패키지" },
-  { key: "apiEndpoint", label: "API" },
-];
+  if (state.status === "loading") {
+    return (
+      <>
+        <PageHeader title="Overview" description="진행 요약과 최근 활동 — 정본은 GitHub과 리포 문서" />
+        <LoadingSkeleton variant="cards" rows={4} />
+      </>
+    );
+  }
+  if (state.status === "error") {
+    return (
+      <>
+        <PageHeader title="Overview" description="진행 요약과 최근 활동 — 정본은 GitHub과 리포 문서" />
+        <ErrorState description={errorMessage(state.error)} onRetry={reload} />
+      </>
+    );
+  }
 
-function MetaChipRow({ meta }: { meta: ProjectMeta }) {
-  const chips = META_FIELDS.map((field) => {
-    const value = meta[field.key];
-    if (value === undefined || value === null || String(value).trim() === "") return null;
-    return { label: field.label, value: String(value) };
-  }).filter((chip): chip is { label: string; value: string } => chip !== null);
-
-  if (chips.length === 0) return null;
-
-  return (
-    <div
-      style={{
-        display: "flex",
-        flexWrap: "wrap",
-        gap: "var(--space-2)",
-        marginTop: "var(--space-4)",
-      }}
-    >
-      {chips.map((chip) => (
-        <span
-          key={chip.label}
-          style={{
-            display: "inline-flex",
-            alignItems: "baseline",
-            gap: "var(--space-1)",
-            padding: "var(--space-1) var(--space-3)",
-            border: "var(--border-width-hairline) solid var(--color-border)",
-            borderRadius: "var(--radius-full)",
-            background: "var(--color-surface)",
-            fontSize: "var(--font-size-caption)",
-          }}
-        >
-          <span style={{ color: "var(--color-text-muted)" }}>{chip.label}</span>
-          <span style={{ color: "var(--color-text)", fontWeight: "var(--font-weight-medium)" }}>
-            {chip.value}
-          </span>
-        </span>
-      ))}
-    </div>
-  );
-}
-
-function OverviewParagraph({ content }: { content: string }) {
-  const text = content?.trim();
-  if (!text) return null;
-  return (
-    <p
-      style={{
-        marginTop: "var(--space-6)",
-        color: "var(--color-text)",
-        fontSize: "var(--font-size-body)",
-        lineHeight: "var(--line-height-body)",
-        whiteSpace: "pre-wrap",
-      }}
-    >
-      {text}
-    </p>
-  );
-}
-
-function SectionTitle({ children }: { children: ReactNode }) {
-  return (
-    <h2
-      style={{
-        marginTop: "var(--space-8)",
-        marginBottom: "var(--space-4)",
-        fontSize: "var(--font-size-section)",
-        fontWeight: "var(--font-weight-semibold)",
-        color: "var(--color-text)",
-      }}
-    >
-      {children}
-    </h2>
-  );
-}
-
-function SummaryCards({ pipeline }: { pipeline: PipelineSummary }) {
-  const inputs = pipeline.inputs ?? [];
-  const outputs = pipeline.outputs ?? [];
-  const hasContent = inputs.length > 0 || outputs.length > 0;
-  if (!hasContent) return null;
+  const s = state.data;
+  const priorities = (Object.keys(PRIORITY_LABEL) as Priority[]).filter((p) => s.priorityCounts[p] > 0);
 
   return (
-    <section>
-      <SectionTitle>입력 · 출력</SectionTitle>
-      <CardGrid>
-        {inputs.map((input) => (
-          <Card key={input.key} title={input.title} meta={<span>입력</span>}>
-            {input.description ? (
-              <span style={{ color: "var(--color-text-muted)" }}>{input.description}</span>
-            ) : null}
-          </Card>
-        ))}
-        {outputs.length > 0 ? (
-          <Card
-            title="출력"
-            meta={<span>산출물</span>}
-            variant="outline"
-          >
-            <ul style={{ margin: 0, paddingLeft: "var(--space-5)" }}>
-              {outputs.map((output, index) => (
-                <li key={`${output.title}-${index}`} style={{ marginBottom: "var(--space-1)" }}>
-                  <span style={{ fontWeight: "var(--font-weight-medium)" }}>{output.title}</span>
-                  {output.description ? (
-                    <span style={{ color: "var(--color-text-muted)" }}>
-                      {" — "}
-                      {output.description}
-                    </span>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          </Card>
-        ) : null}
-      </CardGrid>
-    </section>
-  );
-}
-
-function WorkflowDiagram({ pipeline }: { pipeline: PipelineSummary }) {
-  const steps = [...(pipeline.workflowSteps ?? [])].sort((a, b) => a.order - b.order);
-  if (steps.length === 0) return null;
-
-  return (
-    <section>
-      <SectionTitle>워크플로우</SectionTitle>
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          alignItems: "center",
-          gap: "var(--space-2)",
-        }}
-      >
-        {steps.map((step, index) => (
-          <div
-            key={`${step.order}-${step.label}`}
-            style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}
-          >
-            <div
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "var(--space-2)",
-                padding: "var(--space-2) var(--space-4)",
-                border: "var(--border-width-hairline) solid var(--color-border)",
-                borderRadius: "var(--radius-md)",
-                background: "var(--color-surface)",
-              }}
-            >
-              <span
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  width: "var(--space-6)",
-                  height: "var(--space-6)",
-                  borderRadius: "var(--radius-full)",
-                  background: "var(--color-primary)",
-                  color: "var(--color-bg)",
-                  fontSize: "var(--font-size-caption)",
-                  fontWeight: "var(--font-weight-semibold)",
-                }}
-              >
-                {index + 1}
-              </span>
-              <span style={{ fontSize: "var(--font-size-body)" }}>{step.label}</span>
-            </div>
-            {index < steps.length - 1 ? (
-              <span
-                aria-hidden="true"
-                style={{
-                  color: "var(--color-text-muted)",
-                  fontSize: "var(--font-size-section)",
-                }}
-              >
-                →
-              </span>
-            ) : null}
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-export default function OverviewPage() {
-  const { state, reload } = useAsyncData<OverviewLanding>(async () => {
-    const [{ meta, pipeline }, doc] = await Promise.all([
-      getOverviewMeta(),
-      getOverviewDoc("overview"),
-    ]);
-    return { meta, pipeline, doc };
-  }, []);
-
-  return (
-    <div>
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-6)" }}>
       <PageHeader
-        title="프로젝트 개요"
-        description="입력 문서 기반 표준 목록 자동 생성 시스템"
+        title="Overview"
+        description="진행 요약과 최근 활동 — 정본은 GitHub과 리포 문서, 이 화면은 읽기 전용 투영"
+        summary={s.syncNote ?? undefined}
+        actions={
+          <Button variant="secondary" onClick={reload}>
+            새로고침
+          </Button>
+        }
       />
 
-      {state.status === "loading" ? <LoadingSkeleton variant="cards" rows={4} /> : null}
-
-      {state.status === "error" ? (
-        <ErrorState description={errorMessage(state.error)} onRetry={reload} />
-      ) : null}
-
-      {state.status === "success" ? (
-        <>
-          <MetaChipRow meta={state.data.meta} />
-          <OverviewParagraph content={state.data.doc.content} />
-          <div style={{ marginTop: "var(--space-4)" }}>
-            <SummaryCards pipeline={state.data.pipeline} />
-            <WorkflowDiagram pipeline={state.data.pipeline} />
+      <CardGrid>
+        <Card title="열린 작업">
+          <strong style={{ fontSize: "1.6em" }}>{s.openWork}</strong>
+          <div style={{ color: "var(--color-text-muted)", marginTop: "var(--space-2)" }}>
+            착수 가능 {s.readyWork} · 진행중 {s.inProgress} · 리뷰중 {s.inReview}
           </div>
-        </>
-      ) : null}
+        </Card>
+        <Card title="이번 주 머지">
+          <strong style={{ fontSize: "1.6em" }}>{s.mergedThisWeek}</strong>
+          <div style={{ color: "var(--color-text-muted)", marginTop: "var(--space-2)" }}>최근 7일 머지된 PR</div>
+        </Card>
+        <Card title="우선순위 분포 (열린 작업)">
+          {priorities.length === 0 ? (
+            <span style={{ color: "var(--color-text-muted)" }}>열린 작업 없음</span>
+          ) : (
+            <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap" }}>
+              {priorities.map((p) => (
+                <Badge key={p} tone={p === "urgent" ? "error" : p === "high" ? "warning" : "neutral"}>
+                  {PRIORITY_LABEL[p]} {s.priorityCounts[p]}
+                </Badge>
+              ))}
+            </div>
+          )}
+        </Card>
+        <Card title="바로가기">
+          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
+            <Link href="/overview/docs">프로젝트 문서 브라우저</Link>
+            <Link href="/work/kanban">작업 Kanban</Link>
+            <Link href="/wbs">진행현황(WBS)</Link>
+          </div>
+        </Card>
+      </CardGrid>
+
+      <Card title="최근 활동">
+        {s.recent.length === 0 ? (
+          <span style={{ color: "var(--color-text-muted)" }}>활동 없음</span>
+        ) : (
+          <ol style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
+            {s.recent.map((item) => (
+              <li key={`${item.kind}-${item.ref}`} style={{ display: "flex", gap: "var(--space-2)", alignItems: "baseline", flexWrap: "wrap" }}>
+                <Badge tone={item.kind === "pr" ? "primary" : "neutral"} size="sm">
+                  {item.kind === "pr" ? "PR" : "커밋"}
+                </Badge>
+                <a href={item.htmlUrl} target="_blank" rel="noreferrer" style={{ fontWeight: 600 }}>
+                  {item.ref} {item.title}
+                </a>
+                <span style={{ color: "var(--color-text-muted)", fontSize: "0.85em" }}>
+                  {item.actor ?? "?"} · {formatDateTime(item.at)}
+                </span>
+                {item.agentInvolved ? (
+                  <Badge tone="info" size="sm">
+                    에이전트
+                  </Badge>
+                ) : null}
+              </li>
+            ))}
+          </ol>
+        )}
+      </Card>
     </div>
   );
 }

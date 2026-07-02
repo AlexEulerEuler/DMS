@@ -1,30 +1,21 @@
 /**
- * REST client for the console backend (api-contract.md). All calls run from
- * client components so a loading state is always visible on mount, matching
- * the foundation.md §8 common-state contract (loading → populated | error).
+ * 클라이언트 → 로컬 라우트(/api/gh/*) 조회 전용 클라이언트. 라우트는 서버에서 GitHub과
+ * 리포 문서를 직접 읽는다(ADR-0002 — 대시보드는 읽기 전용 투영, 쓰기 함수는 존재하지 않는다).
  */
 "use client";
 
 import type {
-  Agent,
-  AgentStatus,
-  CommonStatus,
-  InputSourceType,
-  InputsResponse,
-  OverviewDoc,
-  OverviewOutputs,
-  Page,
-  PipelineSummary,
-  ProjectMeta,
-  Priority,
-  SourceDocument,
-  TaskIA,
-  TaskNodeType,
-  WbsResponse,
-  WorkItem,
-  WorkStatus,
-  IssueView,
+  ActivityItem,
+  DocContent,
+  DocEntry,
+  GhIssue,
+  HomeSummary,
+  IssueDetail,
   IssueState,
+  Page,
+  Priority,
+  WbsRow,
+  WorkStage,
 } from "./types";
 
 export class ApiError extends Error {
@@ -37,15 +28,6 @@ export class ApiError extends Error {
     this.status = status;
     this.code = code;
   }
-}
-
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-
-// Optional shared-secret gate (runtime.md §5): when set, every API call sends it.
-const API_TOKEN = process.env.NEXT_PUBLIC_DMS_API_TOKEN;
-
-function authHeaders(): Record<string, string> {
-  return API_TOKEN ? { Authorization: `Bearer ${API_TOKEN}` } : {};
 }
 
 export function errorMessage(error: unknown): string {
@@ -64,267 +46,77 @@ function toQuery(params: Record<string, QueryValue>): string {
   return qs ? `?${qs}` : "";
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}/api${path}`, {
-    ...init,
-    headers: { "Content-Type": "application/json", ...authHeaders(), ...(init?.headers ?? {}) },
-    cache: "no-store",
-  });
-
-  if (response.status === 204) {
-    return undefined as T;
-  }
-
+async function request<T>(path: string): Promise<T> {
+  const response = await fetch(`/api/gh${path}`, { cache: "no-store" });
   const body = await response.json().catch(() => null);
-
   if (!response.ok) {
-    const message = body?.error?.message ?? "요청을 처리할 수 없습니다.";
-    const code = body?.error?.code ?? "internal_error";
-    throw new ApiError(response.status, code, message);
+    throw new ApiError(
+      response.status,
+      body?.error?.code ?? "internal_error",
+      body?.error?.message ?? "요청을 처리할 수 없습니다.",
+    );
   }
-
   return body as T;
 }
 
-// ---------------------------------------------------------------------------
-// Overview
-// ---------------------------------------------------------------------------
-
-export function getOverviewMeta(): Promise<{ meta: ProjectMeta; pipeline: PipelineSummary }> {
-  return request("/overview/meta");
-}
-
-export function getOverviewDoc(slug: string): Promise<OverviewDoc> {
-  return request(`/overview/docs/${encodeURIComponent(slug)}`);
-}
-
-export function getOverviewOutputs(): Promise<OverviewOutputs> {
-  return request("/overview/outputs");
-}
-
-export function resolveDownloadUrl(downloadUrl: string): string {
-  return `${API_BASE_URL}${downloadUrl}`;
-}
-
-/** Fetch a file (with the auth header when the gate is on) and save it via a blob,
- * so downloads work whether or not DMS_API_TOKEN is set. */
-export async function downloadFile(downloadUrl: string, filename: string): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}${downloadUrl}`, { headers: authHeaders(), cache: "no-store" });
-  if (!response.ok) {
-    throw new ApiError(response.status, "download_error", "다운로드에 실패했습니다.");
-  }
-  const blob = await response.blob();
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
-}
-
-// ---------------------------------------------------------------------------
-// Inputs (document ingestion, runtime.md §2)
-// ---------------------------------------------------------------------------
-
-export function listInputs(): Promise<InputsResponse> {
-  return request("/inputs");
-}
-
-export async function uploadInput(sourceType: InputSourceType, file: File): Promise<SourceDocument> {
-  const form = new FormData();
-  form.append("file", file);
-  // NOTE: no Content-Type header — the browser sets the multipart boundary.
-  const response = await fetch(`${API_BASE_URL}/api/inputs/${sourceType}`, {
-    method: "POST",
-    body: form,
-    headers: authHeaders(),
-    cache: "no-store",
-  });
-  const body = await response.json().catch(() => null);
-  if (!response.ok) {
-    throw new ApiError(response.status, body?.error?.code ?? "internal_error", body?.error?.message ?? "업로드 실패");
-  }
-  return body as SourceDocument;
-}
-
-export function deleteInput(id: string): Promise<void> {
-  return request(`/inputs/${id}`, { method: "DELETE" });
-}
-
-export interface PipelineRunSummary {
-  master_list_id: string;
-  version: string;
-  item_count: number;
-  matched_count: number;
-  new_count: number;
-  schedule_id: string | null;
-  milestone_count: number;
-  export_ids: string[];
-  document_count: number;
-}
-
-export function runPipeline(payload: { confirm?: boolean; formats?: string[] } = {}): Promise<PipelineRunSummary> {
-  return request("/pipeline/run", { method: "POST", body: JSON.stringify(payload) });
-}
-
-// ---------------------------------------------------------------------------
-// Task (IA tree)
-// ---------------------------------------------------------------------------
-
-export function listTasks(status?: CommonStatus): Promise<TaskIA[]> {
-  return request(`/tasks${toQuery({ status })}`);
-}
-
-export interface TaskWritePayload {
-  type: TaskNodeType;
-  title: string;
-  parentId?: string | null;
-  status?: CommonStatus;
-  owner?: string;
-  startDate?: string | null;
-  endDate?: string | null;
-  progress?: number;
-  order?: number;
-}
-
-export function createTask(payload: TaskWritePayload): Promise<TaskIA> {
-  return request("/tasks", { method: "POST", body: JSON.stringify(payload) });
-}
-
-export function updateTask(id: string, payload: Partial<TaskWritePayload>): Promise<TaskIA> {
-  return request(`/tasks/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
-}
-
-export function deleteTask(id: string): Promise<void> {
-  return request(`/tasks/${id}`, { method: "DELETE" });
-}
-
-// ---------------------------------------------------------------------------
-// WBS (read-only)
-// ---------------------------------------------------------------------------
-
-export function getWbs(): Promise<WbsResponse> {
-  return request("/wbs");
-}
-
-// ---------------------------------------------------------------------------
-// Work (Backlog / Kanban)
-// ---------------------------------------------------------------------------
-
-export interface ListWorkParams {
-  status?: WorkStatus;
-  q?: string;
-  page?: number;
-  size?: number;
-}
-
-export function listWork(params: ListWorkParams = {}): Promise<Page<WorkItem>> {
-  return request(`/work${toQuery({ ...params })}`);
-}
-
-export interface WorkWritePayload {
-  title: string;
-  owner?: string | null;
-  status?: WorkStatus;
-  startDate?: string | null;
-  endDate?: string | null;
-  description?: string | null;
-  linkedIssue?: string | null;
-  linkedAgent?: string | null;
-}
-
-export function createWork(payload: WorkWritePayload): Promise<WorkItem> {
-  return request("/work", { method: "POST", body: JSON.stringify(payload) });
-}
-
-export function getWork(id: string): Promise<WorkItem> {
-  return request(`/work/${id}`);
-}
-
-export function updateWork(id: string, payload: Partial<WorkWritePayload>): Promise<WorkItem> {
-  return request(`/work/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
-}
-
-export function deleteWork(id: string): Promise<void> {
-  return request(`/work/${id}`, { method: "DELETE" });
-}
-
-// ---------------------------------------------------------------------------
-// Agent
-// ---------------------------------------------------------------------------
-
-export interface ListAgentsParams {
-  status?: AgentStatus;
-  q?: string;
-  page?: number;
-  size?: number;
-}
-
-export function listAgents(params: ListAgentsParams = {}): Promise<Page<Agent>> {
-  return request(`/agents${toQuery({ ...params })}`);
-}
-
-export interface AgentWritePayload {
-  name: string;
-  status?: AgentStatus;
-  description?: string;
-  planNote?: string;
-  references?: string[];
-}
-
-export function createAgent(payload: AgentWritePayload): Promise<Agent> {
-  return request("/agents", { method: "POST", body: JSON.stringify(payload) });
-}
-
-export function getAgent(id: string): Promise<Agent> {
-  return request(`/agents/${id}`);
-}
-
-export function updateAgent(id: string, payload: Partial<AgentWritePayload>): Promise<Agent> {
-  return request(`/agents/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
-}
-
-export function deleteAgent(id: string): Promise<void> {
-  return request(`/agents/${id}`, { method: "DELETE" });
-}
-
-// ---------------------------------------------------------------------------
-// Issues (GitHub mirror + local overlay)
-// ---------------------------------------------------------------------------
-
+// ── Issues ────────────────────────────────────────────────────────────────
 export interface ListIssuesParams {
-  state?: IssueState;
+  state?: IssueState | "all";
   priority?: Priority;
   q?: string;
   page?: number;
   size?: number;
 }
 
-export function listIssues(params: ListIssuesParams = {}): Promise<Page<IssueView>> {
+export function listIssues(params: ListIssuesParams = {}): Promise<Page<GhIssue>> {
   return request(`/issues${toQuery({ ...params })}`);
 }
 
-export function getIssue(number: number | string): Promise<IssueView> {
+export function getIssueDetail(number: number | string): Promise<IssueDetail> {
   return request(`/issues/${number}`);
 }
 
-export interface IssueCreatePayload {
-  title: string;
-  body?: string;
-  priority?: Priority;
+// ── Work (이슈 유도 실행 뷰) ──────────────────────────────────────────────
+export interface ListWorkParams {
+  stage?: WorkStage;
+  q?: string;
+  page?: number;
+  size?: number;
 }
 
-export function createIssue(payload: IssueCreatePayload): Promise<IssueView> {
-  return request("/issues", { method: "POST", body: JSON.stringify(payload) });
+export function listWork(params: ListWorkParams = {}): Promise<Page<GhIssue> & { syncNote: string | null }> {
+  return request(`/work${toQuery({ ...params })}`);
 }
 
-export interface IssueOverlayPayload {
-  priority?: Priority;
-  linkedWorkItems?: string[];
+export function listWorkAll(): Promise<{ items: GhIssue[]; total: number; syncNote: string | null }> {
+  return request(`/work?all=1`);
 }
 
-export function updateIssueOverlay(number: number | string, payload: IssueOverlayPayload): Promise<IssueView> {
-  return request(`/issues/${number}/overlay`, { method: "PATCH", body: JSON.stringify(payload) });
+// ── 계획 (Task/WBS) ───────────────────────────────────────────────────────
+export interface WbsData {
+  rows: WbsRow[];
+  overallProgress: number;
+  timeAxis: { startDate: string | null; endDate: string | null };
+}
+
+export function getWbs(): Promise<WbsData> {
+  return request(`/wbs`);
+}
+
+// ── 홈·활동 ───────────────────────────────────────────────────────────────
+export function getSummary(): Promise<HomeSummary> {
+  return request(`/summary`);
+}
+
+export function getActivity(): Promise<{ items: ActivityItem[] }> {
+  return request(`/activity`);
+}
+
+// ── 문서 브라우저 ─────────────────────────────────────────────────────────
+export function listDocEntries(path: string): Promise<{ entries: DocEntry[] }> {
+  return request(`/docs${toQuery({ path })}`);
+}
+
+export function getDocContent(path: string): Promise<DocContent> {
+  return request(`/docs${toQuery({ path, content: 1 })}`);
 }

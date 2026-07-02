@@ -1,27 +1,27 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { GanttGrid } from "@/components/GanttGrid";
 import { PageHeader } from "@/components/PageHeader";
+import { Button } from "@/components/Button";
 import { ErrorState, LoadingSkeleton } from "@/components/StateViews";
-import { getWbs } from "@/lib/api-client";
+import { errorMessage, getWbs } from "@/lib/api-client";
 import { useAsyncData } from "@/lib/hooks";
+import type { CommonStatus, WBSItem, WbsRow } from "@/lib/types";
 
 import styles from "./wbs.module.css";
-
-const TODAY = "2026-07-01";
 
 interface LegendKey {
   label: string;
   className: string;
 }
 
-const LEGEND: LegendKey[] = [
-  { label: "완료", className: styles.swatchDone },
-  { label: "진행 중", className: styles.swatchInProgress },
-  { label: "진행 예정", className: styles.swatchPlanned },
-];
+function statusOf(row: WbsRow): CommonStatus {
+  if (row.progress >= 100) return "done";
+  if (row.progress > 0 || row.openIssues > 0) return "in_progress";
+  return "planned";
+}
 
 function OverallProgress({ value }: { value: number }) {
   const clamped = Math.max(0, Math.min(100, Math.round(value)));
@@ -43,9 +43,14 @@ function OverallProgress({ value }: { value: number }) {
 }
 
 function Legend() {
+  const keys: LegendKey[] = [
+    { label: "완료", className: styles.swatchDone },
+    { label: "진행 중", className: styles.swatchInProgress },
+    { label: "진행 예정", className: styles.swatchPlanned },
+  ];
   return (
     <div className={styles.legend} aria-label="상태 범례">
-      {LEGEND.map((key) => (
+      {keys.map((key) => (
         <span key={key.label} className={styles.legendItem}>
           <span className={`${styles.swatch} ${key.className}`} aria-hidden />
           {key.label}
@@ -55,18 +60,18 @@ function Legend() {
   );
 }
 
+/** 진행현황 — 계획(tasks.yaml)의 일정 지정 task 노드를 간트로, 진척은 이슈 집계에서 유도. */
 export default function WbsPage() {
   const { state, reload } = useAsyncData(getWbs, []);
   const [collapsedGroups, setCollapsedGroups] = useState<string[]>([]);
+  const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
   const toggleGroup = (group: string) => {
-    setCollapsedGroups((prev) =>
-      prev.includes(group) ? prev.filter((g) => g !== group) : [...prev, group],
-    );
+    setCollapsedGroups((prev) => (prev.includes(group) ? prev.filter((g) => g !== group) : [...prev, group]));
   };
 
   const title = "진행현황(WBS)";
-  const description = "각 업무의 세부 일정과 진행 상태를 월/주 단위로 표시";
+  const description = "계획(docs/plan/tasks.yaml)의 일정과 이슈 집계 진척을 주 단위로 표시";
 
   if (state.status === "loading") {
     return (
@@ -81,31 +86,53 @@ export default function WbsPage() {
     return (
       <>
         <PageHeader title={title} description={description} />
-        <ErrorState description="진행현황을 불러오지 못했습니다." onRetry={reload} />
+        <ErrorState description={errorMessage(state.error)} onRetry={reload} />
       </>
     );
   }
 
-  const data = state.data;
-  const isEmpty = data.items.length === 0;
-  const overall = isEmpty ? 0 : data.overallProgress;
+  const rows = state.data.rows;
+  const groupTitleById = new Map(rows.map((r) => [r.id, r.title]));
+  const dated = rows.filter((r) => r.type === "task" && r.start && r.end);
+  const undatedCount = rows.filter((r) => r.type === "task").length - dated.length;
+
+  const items: WBSItem[] = dated.map((row) => ({
+    id: row.id,
+    group: (row.parent && groupTitleById.get(row.parent)) || "기타",
+    title: `${row.id} ${row.title}${row.delayed ? " ⚠ 지연" : ""}`,
+    status: statusOf(row),
+    owner: row.owner ?? undefined,
+    startDate: row.start!,
+    endDate: row.end!,
+    progress: row.progress,
+  }));
 
   return (
     <>
       <PageHeader
         title={title}
         description={description}
-        summary={<OverallProgress value={overall} />}
+        summary={<OverallProgress value={state.data.overallProgress} />}
+        actions={
+          <Button variant="secondary" onClick={reload}>
+            새로고침
+          </Button>
+        }
       />
       <Legend />
+      {undatedCount > 0 ? (
+        <p style={{ color: "var(--color-text-muted)" }}>
+          일정 미지정 작업 {undatedCount}건은 간트에 표시되지 않습니다 (Task 트리에서 확인 · 일정은 tasks.yaml PR로 지정).
+        </p>
+      ) : null}
       <GanttGrid
-        items={data.items}
-        milestones={data.milestones}
-        timeAxis={data.timeAxis}
-        today={TODAY}
+        items={items}
+        milestones={[]}
+        timeAxis={state.data.timeAxis}
+        today={today}
         collapsedGroups={collapsedGroups}
         onToggleGroup={toggleGroup}
-        state={isEmpty ? "empty" : "populated"}
+        state={items.length === 0 ? "empty" : "populated"}
       />
     </>
   );

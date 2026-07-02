@@ -1,3 +1,15 @@
+---
+layer: spec
+status: superseded
+owner: product-owner
+superseded_by: ../../../../docs/decisions/0002-git-native-agent-workflow.md
+---
+
+> **[SUPERSEDED]** 이 계약이 기술하던 콘솔 REST 백엔드는 [ADR-0002](../../../../docs/decisions/0002-git-native-agent-workflow.md)로
+> 제거되었다. 현행 데이터 경로는 프론트엔드 내부의 GitHub 직접 조회 라우트(`/api/gh/*`,
+> `frontend/src/lib/server/`)이며, 라벨·상태 유도 규약의 정본은 [docs/policy/10-dev-workflow.md](../../../../docs/policy/10-dev-workflow.md)다.
+> 아래 원문은 기록으로 보존한다.
+
 # API Contract — 콘솔 REST API + GitHub 연동
 
 > 범위: `apps/dms-console` 콘솔 한정. 이 문서는 콘솔 프론트엔드가 호출하는 REST API 계약과, 그 중 GitHub Issues를 프록시하는 연동 규약을 정의한다. 값·enum·페이지네이션·인증의 단일 기준(SoT)은 [README.md](./README.md)이며, 요청/응답 스키마의 타입명은 [data-schema.md](./data-schema.md)(엔티티 TypeScript 타입, 작성 예정) 및 [../ia/data-model.md](../ia/data-model.md)를 인용한다. IA·README와 모순되면 그쪽을 우선하며, 발견한 불일치는 12절에 모은다.

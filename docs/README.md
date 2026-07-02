@@ -22,6 +22,7 @@ DMS 워크스페이스의 문서 계층과 정본 레지스트리. 문서 작성
 | 아카이브 | [archive/](archive/) | superseded 문서의 무덤 (읽기 전용) | — |
 
 진입점: 루트 [AGENTS.md](../AGENTS.md) (에이전트) / 루트 [README.md](../README.md) (사람).
+사용법: [guide.md](guide.md) — 일상 루프·티어·트러블슈팅 한 장 요약.
 
 ## 정본 레지스트리 (같은 사실을 두 곳에 쓰지 않는다)
 

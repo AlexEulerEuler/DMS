@@ -1,3 +1,18 @@
+---
+layer: decision
+status: superseded
+owner: product-owner
+superseded_by: ../decisions/0002-git-native-agent-workflow.md
+---
+
+# [SUPERSEDED] Runtime Architecture — 실전 운영 명세 (v1)
+
+> **이 문서는 [ADR-0002](../decisions/0002-git-native-agent-workflow.md)로 기각·대체되었다.**
+> 중앙 SQLite 정본·MCP/claim 루프·오케스트레이터(§4·§8) 설계는 "개발자 로컬에는 git 클론만"
+> 원칙과 충돌해 폐기됐고, 영속성·인제스천·파이프라인(§1~3)은 백엔드 폐지와 함께 제거됐다.
+> 현행 정본: [docs/policy/10-dev-workflow.md](../policy/10-dev-workflow.md). 에이전트는 이 문서를
+> 정본으로 취급하지 말 것. 원문은 기각 사유의 기록으로 아래에 보존한다.
+
 # Runtime Architecture — 실전 운영 명세
 
 > 범위: `docs/spec`이 "향후/범위 밖"으로 미룬 실전 운영 계층의 기획 정본. `docs/spec`(화면·컴포넌트·API·토큰)은 계획/미러 콘솔을 정의하고, 이 문서는 그것을 **실제 개발관리가 가능한 시스템**으로 만드는 5개 계층(영속성·문서 투입·생성 파이프라인·에이전트 루프·인증/배포)을 설계한다. 값·enum·타입은 `docs/spec`을 그대로 상속한다.

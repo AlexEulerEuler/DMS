@@ -1,0 +1,77 @@
+# Task/WBS 계획 정본 — 대시보드 Task·WBS 화면이 이 파일을 파싱한다.
+# 규칙: id 유일·불변(T-### 형식), parent는 존재해야 함, type ∈ category|group|task.
+# start/end는 선택(마일스톤급 노드에만 권장). progress: null = 이슈 집계로 자동 산출, 숫자 = 수동 우선.
+# 이슈는 `task:T-###` 라벨로 이 노드에 연결된다.
+
+- id: T-100
+  type: category
+  title: Git-native 전환
+
+- id: T-110
+  type: group
+  parent: T-100
+  title: 워크플로우 기반 구축
+
+- id: T-111
+  type: task
+  parent: T-110
+  title: 기반 문서·정책·템플릿 작성
+  progress: null
+
+- id: T-112
+  type: task
+  parent: T-110
+  title: GitHub 장치 (이슈 폼·PR 템플릿·gate CI)
+  progress: null
+
+- id: T-113
+  type: task
+  parent: T-110
+  title: .claude 킷 (커맨드·에이전트·훅)
+  progress: null
+
+- id: T-114
+  type: task
+  parent: T-110
+  title: 리포 공개 전환·보호 규칙·시크릿 (오너 부트스트랩)
+  progress: null
+
+- id: T-120
+  type: group
+  parent: T-100
+  title: 대시보드 피벗
+
+- id: T-121
+  type: task
+  parent: T-120
+  title: GitHub 직접 조회 데이터층
+  progress: null
+
+- id: T-122
+  type: task
+  parent: T-120
+  title: 페이지 전환 (Issues·Work·Task·WBS·Overview·Activity)
+  progress: null
+
+- id: T-123
+  type: task
+  parent: T-120
+  title: 기각 코드 제거 (backend·compose)
+  progress: null
+
+- id: T-124
+  type: task
+  parent: T-120
+  title: Vercel 배포
+  progress: null
+
+- id: T-130
+  type: group
+  parent: T-100
+  title: 검증·시험 주행
+
+- id: T-131
+  type: task
+  parent: T-130
+  title: 실작업 2~3건 시험 주행 (클레임→PR→검수→머지)
+  progress: null

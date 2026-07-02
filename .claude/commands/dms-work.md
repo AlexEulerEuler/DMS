@@ -25,6 +25,10 @@ DMS 작업 루프를 수행한다. 절차의 정본은 docs/policy/10-dev-workfl
    (콘솔 프론트: `npm run lint:dms:frontend && npm run typecheck:dms:frontend && npm run build:dms:frontend`).
 7. **PR**: `git rebase origin/main` 후 PR 생성. 템플릿의 전 섹션 작성, `Closes #번호`,
    검증 섹션에는 실행한 명령과 실제 결과를 기록하라.
+7-1. **로컬 검수 (솔로 모드)**: 검수 모드가 local이면(리포에 CI용 API 키 없음 — 기본값)
+   verifier 서브에이전트(.claude/agents/verifier.md)를 스폰해 방금 만든 PR을 검수시키고,
+   verifier가 head SHA 마커가 포함된 리뷰 코멘트를 게시하게 하라. verdict fail이면 findings를
+   먼저 해소하라(8단계 예산에 포함). 이 검수 없이는 gate가 머지를 잠근다.
 8. **리뷰 대응 (예산 있음)**: gate 체크 결과를 1회 대기하라(`gh pr checks --watch`).
    fail이면 findings를 읽고 수정하라 — 수정 라운드는 **최대 2회**. 그 후에도 미해결이면
    남은 finding을 PR 코멘트로 요약하고 세션을 종료하라(사람 판단으로 이관).

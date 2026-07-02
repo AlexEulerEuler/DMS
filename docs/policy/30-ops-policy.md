@@ -20,7 +20,8 @@ GitHub 설정(브랜치 보호·auto-merge·Actions)이며, 이 설정의 목표
 - Allow auto-merge: ON (T0 자동 머지의 전제 — required check 선행 구성 후에만 의미 있음)
 - "Allow GitHub Actions to create and approve pull requests": **OFF 유지**
 - 라벨: [10-dev-workflow.md](10-dev-workflow.md) §4 라벨 사전대로 생성
-- 시크릿: `ANTHROPIC_API_KEY` (gate 검수 에이전트용)
+- 시크릿: `ANTHROPIC_API_KEY` — **선택** (등록 시 CI 검수 모드 자동 활성화, 미등록 시
+  솔로/local 검수 모드로 동작 — [20-review-policy.md §6](20-review-policy.md))
 
 주의: 이 잠금은 설정이 유지되는 동안만 유효하다. 오너 admin 토큰을 쥔 세션은 설정을 바꿀 수 있으므로,
 에이전트 세션에는 admin 스코프 없는 fine-grained PAT만 준다(10-dev-workflow §7).

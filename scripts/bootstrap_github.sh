@@ -60,8 +60,9 @@ gh api -X PUT "repos/$REPO/actions/permissions/workflow" \
 echo "[5/5] 남은 수동 단계"
 cat <<'EOF'
 
-  1. 시크릿 등록:  gh secret set ANTHROPIC_API_KEY --repo <repo>
-     (gate의 에이전트 검수용 — 없으면 검수는 경고 후 생략되는 부트스트랩 모드)
+  1. (선택) 시크릿 등록:  gh secret set ANTHROPIC_API_KEY --repo <repo>
+     등록 시 CI 검수 모드 자동 활성화. 미등록 시 솔로/local 검수 모드 —
+     로컬 /dms-review가 남기는 head SHA 마커를 gate가 검증 (20-review-policy.md §6)
   2. 에이전트 세션용 fine-grained PAT 발급 (docs/policy/30-ops-policy.md §2):
      - Repository access: DMS 한정
      - Permissions: Contents/Pull requests/Issues = Read and write. 그 외 전부 없음

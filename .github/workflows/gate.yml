@@ -15,7 +15,7 @@ concurrency:
 permissions:
   contents: write        # T0 auto-merge 활성화에 필요 (fork PR의 GITHUB_TOKEN은 자동으로 read-only)
   pull-requests: write   # 리뷰 리포트 코멘트·auto-merge
-  issues: read
+  issues: write          # auto-merge 액터(github-actions)의 연결 이슈 자동 close에 필요 — #2에서 read로는 실패 실측
 
 jobs:
   gate:
@@ -43,7 +43,7 @@ jobs:
             && echo "found=true" >> "$GITHUB_OUTPUT" \
             || { echo "found=false" >> "$GITHUB_OUTPUT"; echo "::warning::base에 검수 정책 문서 없음 — 부트스트랩 모드(검수 생략)"; }
 
-      - name: 검수 모드 판정 (정본: docs/policy/20-review-policy.md §6)
+      - name: "검수 모드 판정 (정본: docs/policy/20-review-policy.md §6)"
         id: mode
         env:
           HAS_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}

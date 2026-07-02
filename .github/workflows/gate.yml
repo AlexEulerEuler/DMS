@@ -35,6 +35,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           DMS_AUTOPILOT: ${{ vars.DMS_AUTOPILOT }}
+          DMS_COOLDOWN_HOURS: ${{ vars.DMS_COOLDOWN_HOURS }}
         run: node scripts/gate-checks.mjs
 
       - name: 검수 체크리스트를 base 브랜치에서 로드 (인젝션 방어 — PR head 버전 사용 금지)

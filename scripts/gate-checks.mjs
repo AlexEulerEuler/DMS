@@ -110,18 +110,25 @@ for (const dep of body.matchAll(/Depends-on:\s*#(\d+)/gi)) {
   } catch (e) { warnings.push(`Depends-on #${dep[1]} 조회 실패: ${e.message}`); }
 }
 
-// ── T2 쿨다운: 마지막 실질 커밋 기준 24h (override 라벨은 기록됨) ──────
+// ── T2 쿨다운: 마지막 실질 커밋 기준, 시간은 리포 변수로 가변 (10-dev-workflow §5·§9) ──
+// DMS_COOLDOWN_HOURS: 기본 24. 0 이하 = 비활성(초기 고속 세팅 모드) — 사람 머지 요구는 그대로 남는다.
+const rawCooldown = Number(process.env.DMS_COOLDOWN_HOURS ?? "24");
+const cooldownH = Number.isFinite(rawCooldown) ? rawCooldown : 24;
 if (tier === "t2" && !EXEMPT_RE.test(branch)) {
-  const lastCommitISO = sh(`git log -1 --no-merges --format=%cI ${headSha}`);
-  const ageH = (Date.now() - new Date(lastCommitISO).getTime()) / 3.6e6;
-  if (ageH < 24) {
-    if (labels.includes("override")) {
-      warnings.push(`T2 쿨다운(${ageH.toFixed(1)}h/24h)을 override 라벨로 우회 — 감사 대상으로 기록됨`);
-    } else {
-      errors.push(
-        `T2 쿨다운 미충족: 마지막 실질 커밋 후 ${ageH.toFixed(1)}h (24h 필요). ` +
-        `24h 경과 후 'recheck' 라벨을 부착하면 재평가된다. 비상 시 'override' 라벨(기록됨).`
-      );
+  if (cooldownH <= 0) {
+    warnings.push("T2 쿨다운 비활성(DMS_COOLDOWN_HOURS<=0) — 초기 고속 모드. 사람 머지는 여전히 필수");
+  } else {
+    const lastCommitISO = sh(`git log -1 --no-merges --format=%cI ${headSha}`);
+    const ageH = (Date.now() - new Date(lastCommitISO).getTime()) / 3.6e6;
+    if (ageH < cooldownH) {
+      if (labels.includes("override")) {
+        warnings.push(`T2 쿨다운(${ageH.toFixed(1)}h/${cooldownH}h)을 override 라벨로 우회 — 감사 대상으로 기록됨`);
+      } else {
+        errors.push(
+          `T2 쿨다운 미충족: 마지막 실질 커밋 후 ${ageH.toFixed(1)}h (${cooldownH}h 필요). ` +
+          `경과 후 'recheck' 라벨을 부착하면 재평가된다. 비상 시 'override' 라벨(기록됨).`
+        );
+      }
     }
   }
 }

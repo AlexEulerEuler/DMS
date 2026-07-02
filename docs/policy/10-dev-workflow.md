@@ -89,7 +89,7 @@ Agent: claude-code
 
 | 티어 | 판정 (위에서부터, 첫 매치) | 머지 조건 |
 |---|---|---|
-| **T2 헌법급** | diff가 다음 중 하나라도 접촉: `.github/**`, `scripts/**`, `docs/policy/**`, `docs/principles.md`, `docs/templates/**`, `CLAUDE.md`, `**/AGENTS.md`, `.claude/**`, 루트 `package.json`·lockfile. 또는 `tier:t2` 라벨 | 전 체크 green + **24h 쿨다운**(마지막 실질 커밋 기준, `override` 라벨은 기록됨) + 사람 정독·머지 |
+| **T2 헌법급** | diff가 다음 중 하나라도 접촉: `.github/**`, `scripts/**`, `docs/policy/**`, `docs/principles.md`, `docs/templates/**`, `CLAUDE.md`, `**/AGENTS.md`, `.claude/**`, 루트 `package.json`·lockfile. 또는 `tier:t2` 라벨 | 전 체크 green + **쿨다운**(기본 24h — 리포 변수 `DMS_COOLDOWN_HOURS`, 0=비활성. 마지막 실질 커밋 기준, `override` 라벨은 기록됨) + 사람 정독·머지 |
 | **T0 자동** | diff의 **모든** 파일이 비실행 콘텐츠(`docs/**`, `work/**`, `*.md`, 이미지)이고 총 400라인 미만 | 전 체크 green → gate가 auto-merge 활성화. 사람 개입 0 |
 | **T1 코드** | 그 외 전부 | 전 체크 green + 사람이 **check run의 리뷰 리포트**를 읽고 머지. **오토파일럿 ON 시 자동 머지**(§9) |
 
@@ -123,9 +123,17 @@ override 라벨의 인간 전용성. 보완: gate의 check run 바인딩, 대시
 **에이전트는 스스로 켤 수 없다** (라벨·파일 방식으로 구현 금지 — 이 전용성이 무너진다).
 
 ```bash
-gh variable set DMS_AUTOPILOT --body on     # 켜기 (자기 전)
+gh variable set DMS_AUTOPILOT --body on     # 켜기 (야간·상시 모두 가능)
 gh variable set DMS_AUTOPILOT --body off    # 끄기 (킬 스위치 — 다음 gate 실행부터 반영)
-./scripts/autopilot.sh [최대이슈수]          # 야간 구동 루프 (기본 5건, 연속 실패 2회 중단, 매 회 토글 재확인)
+./scripts/autopilot.sh [최대이슈수]          # 무인 구동 루프 (기본 5건, 연속 실패 2회 중단, 매 회 토글 재확인)
+```
+
+**초기 고속 세팅 프리셋** — 사람 서명을 T2 머지 클릭 한 곳으로 최소화:
+
+```bash
+gh variable set DMS_AUTOPILOT --body on        # ready·T1 머지 해제 (상시)
+gh variable set DMS_COOLDOWN_HOURS --body 0    # T2 쿨다운 비활성 — 사람 머지는 유지
+# 안정기 복귀: DMS_AUTOPILOT off + DMS_COOLDOWN_HOURS 삭제(기본 24h 복원)
 ```
 
 ON일 때 바뀌는 것 — 완화되는 것은 **착수 서명과 머지 클릭뿐**, 검수는 그대로:

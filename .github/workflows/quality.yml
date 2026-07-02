@@ -1,0 +1,50 @@
+# quality — 결정적 품질 체크 (검수의 1차 잠금 — LLM과 독립).
+# required check로 지정되므로 paths 필터를 쓰지 않는다(스킵된 워크플로우는 체크 미생성 → 영구 pending 함정).
+# 대신 잡 내부에서 변경 감지 후 해당 없으면 no-op 성공 처리한다.
+name: quality
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+concurrency:
+  group: quality-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 변경 영역 감지
+        id: changes
+        run: |
+          git fetch --no-tags --depth=200 origin "${{ github.base_ref }}"
+          CHANGED=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")
+          echo "$CHANGED"
+          echo "frontend=$(echo "$CHANGED" | grep -q '^apps/dms-console/frontend/\|^package\.json$\|^package-lock\.json$' && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v4
+        if: steps.changes.outputs.frontend == 'true'
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: 콘솔 프론트엔드 lint·typecheck·build
+        if: steps.changes.outputs.frontend == 'true'
+        run: |
+          npm ci
+          npm run lint:dms:frontend
+          npm run typecheck:dms:frontend
+          npm run build:dms:frontend
+
+      - name: 해당 없음 (no-op 성공)
+        if: steps.changes.outputs.frontend != 'true'
+        run: echo "품질 검사 대상 변경 없음 — 통과"

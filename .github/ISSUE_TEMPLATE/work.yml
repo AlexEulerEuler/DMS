@@ -1,0 +1,70 @@
+name: 작업 (Work Item)
+description: 에이전트/개발자가 착수할 수 있는 작업 정의. ready 라벨은 사람이 별도로 부여합니다.
+title: "[작업] "
+labels: ["type:feature"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        필수 필드를 채워야 에이전트가 이 정의만 읽고 착수할 수 있습니다.
+        규칙 정본: [docs/policy/10-dev-workflow.md](../../docs/policy/10-dev-workflow.md)
+  - type: textarea
+    id: background
+    attributes:
+      label: 배경 / 목적
+      description: 이 작업이 왜 필요한가. 발원 맥락과 링크.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 완료 조건 (Acceptance)
+      description: 검증 가능한 명제의 체크박스 목록. 검수 에이전트가 이 목록과 대조합니다.
+      placeholder: |
+        - [ ] `npm run build:dms:frontend` 통과
+        - [ ] /work 페이지에서 칸반 4열이 렌더된다
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: 컨텍스트 문서 (최대 5개)
+      description: 착수 전 반드시 읽어야 하는 문서 경로. 절 앵커까지 지목 권장.
+      placeholder: |
+        - docs/policy/10-dev-workflow.md#3
+        - apps/dms-console/docs/spec/screens.md#work
+    validations:
+      required: true
+  - type: input
+    id: scope
+    attributes:
+      label: 예상 변경 영역
+      description: 주로 바뀌는 디렉터리 (충돌 회피용)
+      placeholder: apps/dms-console/frontend/src/app/work
+    validations:
+      required: true
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: 명시적 비범위 (하지 말 것)
+      description: 과잉 구현을 막는 경계. 검수 에이전트가 침범을 차단 사유로 봅니다.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: area
+      options:
+        - console-frontend
+        - docs
+        - infra
+        - target-frontend
+        - target-backend
+    validations:
+      required: true
+  - type: dropdown
+    id: priority
+    attributes:
+      label: 우선순위
+      options: ["P0", "P1", "P2", "P3"]
+      default: 2

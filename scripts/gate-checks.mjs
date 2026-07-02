@@ -16,6 +16,8 @@ const baseRef = pr.base.ref;
 const headSha = pr.head.sha;
 const labels = pr.labels.map((l) => l.name);
 const isFork = pr.head.repo && pr.head.repo.full_name !== repo;
+// 오토파일럿(10-dev-workflow §9): 리포 변수 DMS_AUTOPILOT=on — 토글은 admin 전용, 에이전트 자가 활성화 불가
+const autopilot = (process.env.DMS_AUTOPILOT ?? "").toLowerCase() === "on";
 const errors = [];
 const warnings = [];
 
@@ -89,7 +91,13 @@ if (!linkMatch) {
     if (!issueLabels.includes("ready") && issue.state === "open") {
       const events = await gh(`/repos/${repo}/issues/${linkedIssue}/events?per_page=100`);
       const everReady = events.some((e) => e.event === "labeled" && e.label?.name === "ready");
-      if (!everReady) errors.push(`이슈 #${linkedIssue}에 ready 라벨이 부여된 적 없음 (착수 승인 게이트)`);
+      if (!everReady) {
+        if (autopilot) {
+          warnings.push(`autopilot ON — 이슈 #${linkedIssue}의 ready 게이트 완화 (감사 대상 기록)`);
+        } else {
+          errors.push(`이슈 #${linkedIssue}에 ready 라벨이 부여된 적 없음 (착수 승인 게이트)`);
+        }
+      }
     }
   } catch (e) { warnings.push(`이슈 #${linkedIssue} 조회 실패: ${e.message}`); }
 }
@@ -123,6 +131,7 @@ if (isFork) warnings.push("fork PR — 에이전트 검수가 실행되지 않�
 
 // ── 결과 ──────────────────────────────────────────────────────────────
 out("tier", tier);
+out("autopilot", autopilot ? "on" : "off");
 out("fork", String(isFork));
 console.log(`tier=${tier} files=${files.length} (+${pr.additions}/-${pr.deletions})`);
 warnings.forEach((w) => console.log(`::warning::${w}`));

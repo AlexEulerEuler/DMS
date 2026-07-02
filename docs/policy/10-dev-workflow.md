@@ -91,7 +91,7 @@ Agent: claude-code
 |---|---|---|
 | **T2 헌법급** | diff가 다음 중 하나라도 접촉: `.github/**`, `scripts/**`, `docs/policy/**`, `docs/principles.md`, `docs/templates/**`, `CLAUDE.md`, `**/AGENTS.md`, `.claude/**`, 루트 `package.json`·lockfile. 또는 `tier:t2` 라벨 | 전 체크 green + **24h 쿨다운**(마지막 실질 커밋 기준, `override` 라벨은 기록됨) + 사람 정독·머지 |
 | **T0 자동** | diff의 **모든** 파일이 비실행 콘텐츠(`docs/**`, `work/**`, `*.md`, 이미지)이고 총 400라인 미만 | 전 체크 green → gate가 auto-merge 활성화. 사람 개입 0 |
-| **T1 코드** | 그 외 전부 | 전 체크 green + 사람이 **check run의 리뷰 리포트**를 읽고 머지 |
+| **T1 코드** | 그 외 전부 | 전 체크 green + 사람이 **check run의 리뷰 리포트**를 읽고 머지. **오토파일럿 ON 시 자동 머지**(§9) |
 
 라벨은 티어를 **올릴 수만** 있다. rename·심링크·모드 변경도 경로 검사에 포함한다(`git diff --name-status`).
 
@@ -116,3 +116,29 @@ Agent: claude-code
 단일 계정 운용의 한계로 다음은 기계 강제가 아니라 절차 규율이다: T1의 "사람이 머지",
 override 라벨의 인간 전용성. 보완: gate의 check run 바인딩, 대시보드의 자동 머지 피드,
 주간 표본 감사(0-findings 자동 머지 편향 샘플링).
+
+## 9. 오토파일럿 모드 (사람 부재 시 완전 자동 — on/off 토글)
+
+리포 변수 **`DMS_AUTOPILOT`** 하나로 켜고 끈다. 변수 관리 권한은 admin 전용이므로
+**에이전트는 스스로 켤 수 없다** (라벨·파일 방식으로 구현 금지 — 이 전용성이 무너진다).
+
+```bash
+gh variable set DMS_AUTOPILOT --body on     # 켜기 (자기 전)
+gh variable set DMS_AUTOPILOT --body off    # 끄기 (킬 스위치 — 다음 gate 실행부터 반영)
+./scripts/autopilot.sh [최대이슈수]          # 야간 구동 루프 (기본 5건, 연속 실패 2회 중단, 매 회 토글 재확인)
+```
+
+ON일 때 바뀌는 것 — 완화되는 것은 **착수 서명과 머지 클릭뿐**, 검수는 그대로:
+
+| 게이트 | OFF (기본) | ON |
+|---|---|---|
+| `ready` 착수 서명 | 필수 (gate error) | 경고로 완화 — 위반 기록은 남음 |
+| T0 머지 | 자동 | 자동 (변화 없음) |
+| T1 머지 | 사람 클릭 | 전 체크 green 시 **자동 머지** |
+| **T2 머지** | 쿨다운 + 사람 | **변화 없음 — 어떤 모드에서도 사람** |
+| 검수(로컬 마커/CI verdict) | 필수 | **필수 (완화 없음)** |
+| `blocked` 라벨 | 착수 금지 | 착수 금지 |
+
+안전 근거: 시스템이 밤새 자기 규칙(T2 경로: `.github`·`docs/policy`·`.claude` 등)을 바꿀 수 없고,
+모든 자동 머지는 여전히 결정적 체크+검수를 통과해야 한다. 아침에 대시보드 활동 뷰와
+`gh pr list --state merged`로 전량 확인하며, 야간 자동 머지분은 표본 감사(20-review-policy §5)의 1순위 표본이다.

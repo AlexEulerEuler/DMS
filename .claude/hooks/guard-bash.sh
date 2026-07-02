@@ -13,10 +13,11 @@ echo "$CMD" | grep -qiE 'gh[[:space:]]+pr[[:space:]]+merge' && block "gh pr merg
 # main 직접 push 금지 (refspec 변형 포함)
 echo "$CMD" | grep -qiE 'git[[:space:]]+push[^|;&]*([[:space:]:/]main([[:space:]]|$)|HEAD:main)' && block "main push"
 echo "$CMD" | grep -qiE 'git[[:space:]]+push[[:space:]]+(-[a-z-]+[[:space:]]+)*origin[[:space:]]*$' && block "현재 브랜치 확인 없는 push"
-# 리포 설정·보호 규칙·시크릿 변경 금지
+# 리포 설정·보호 규칙·시크릿·변수 변경 금지 (오토파일럿 토글 자가 활성화 차단 — ADR-0003)
 echo "$CMD" | grep -qiE 'gh[[:space:]]+repo[[:space:]]+(edit|delete|archive)' && block "gh repo 설정 변경"
 echo "$CMD" | grep -qiE 'gh[[:space:]]+secret' && block "gh secret"
-echo "$CMD" | grep -qiE 'gh[[:space:]]+api[^|;&]*-X[[:space:]]*(PUT|DELETE|PATCH)[^|;&]*(protection|permissions|visibility|merge)' && block "gh api 설정 변경"
+echo "$CMD" | grep -qiE 'gh[[:space:]]+variable[[:space:]]+(set|delete)' && block "gh variable 변경 (오토파일럿 토글은 사람만)"
+echo "$CMD" | grep -qiE 'gh[[:space:]]+api[^|;&]*-X[[:space:]]*(PUT|DELETE|PATCH)[^|;&]*(protection|permissions|visibility|merge|variables)' && block "gh api 설정 변경"
 # 게이트 라벨 셀프 부여 금지
 echo "$CMD" | grep -qiE 'gh[[:space:]]+(issue|pr)[[:space:]]+edit[^|;&]*--add-label[^|;&]*(ready|override)' && block "ready/override 라벨 부여"
 

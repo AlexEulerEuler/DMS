@@ -28,6 +28,8 @@
       "Bash(gh repo edit:*)",
       "Bash(gh repo delete:*)",
       "Bash(gh secret:*)",
+      "Bash(gh variable set:*)",
+      "Bash(gh variable delete:*)",
       "Bash(gh auth:*)"
     ]
   },

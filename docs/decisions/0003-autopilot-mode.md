@@ -20,8 +20,10 @@ owner: product-owner
 
 ## 결정
 
-- 토글 = 리포 Actions 변수 `DMS_AUTOPILOT` (on/off). 변수 관리는 admin 전용 —
-  에이전트 세션의 fine-grained PAT로는 변경 불가하므로 **에이전트가 스스로 자율 모드를 켤 수 없다**.
+- 토글 = 리포 Actions 변수 `DMS_AUTOPILOT` (on/off). "에이전트가 스스로 켤 수 없다"는 **3중 방어**로 보장한다:
+  ① fine-grained PAT에 변수 권한 미부여(토큰 수준 — 30-ops-policy §2 적용 시), ② 로컬 가드 훅·deny 목록이
+  `gh variable set/delete`를 차단(admin 토큰을 임시로 쓰는 기간의 방어 — 검수에서 발견된 공백을 보강),
+  ③ 절차 금지(10-dev-workflow §7). 어느 하나가 뚫려도 나머지가 막는다.
 - ON 시: gate가 `ready` 미부여를 error→warning으로 완화하고, T1도 전 체크 green이면 auto-merge.
 - **불변 조건**: T2(정책·CI·에이전트 지침)는 어떤 모드에서도 사람 머지 + 쿨다운.
   검수(로컬 마커/CI verdict)와 결정적 체크는 어떤 모드에서도 완화되지 않는다. `blocked`는 항상 착수 금지.

@@ -43,9 +43,47 @@ jobs:
             && echo "found=true" >> "$GITHUB_OUTPUT" \
             || { echo "found=false" >> "$GITHUB_OUTPUT"; echo "::warning::base에 검수 정책 문서 없음 — 부트스트랩 모드(검수 생략)"; }
 
-      - name: 에이전트 검수 (fresh 컨텍스트 — 구현 세션과 구조적으로 분리)
+      - name: 검수 모드 판정 (정본: docs/policy/20-review-policy.md §6)
+        id: mode
+        env:
+          HAS_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+          OVERRIDE: ${{ vars.DMS_REVIEW_MODE }}
+        run: |
+          MODE="${OVERRIDE:-}"
+          if [ -z "$MODE" ]; then
+            if [ "$HAS_KEY" = "true" ]; then MODE="ci"; else MODE="local"; fi
+          fi
+          echo "mode=$MODE" >> "$GITHUB_OUTPUT"
+          echo "검수 모드: $MODE (키 보유=$HAS_KEY, 오버라이드=${OVERRIDE:-없음})"
+
+      - name: 로컬 검수 확인 (솔로 모드 — /dms-review가 남긴 head SHA 바인딩 마커 검증)
+        if: >-
+          steps.mode.outputs.mode == 'local' &&
+          steps.checks.outputs.fork != 'true' &&
+          steps.checklist.outputs.found == 'true' &&
+          steps.checks.outputs.tier != 't2'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          MARKERS=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate \
+            --jq '.[].body' | grep -o "dms-local-review verdict=[a-z]* head=[0-9a-f]*" || true)
+          echo "발견된 마커: ${MARKERS:-없음}"
+          if echo "$MARKERS" | grep -q "verdict=pass head=$HEAD_SHA"; then
+            echo "로컬 검수 pass (현재 head $HEAD_SHA 기준)"
+          elif echo "$MARKERS" | grep -q "head=$HEAD_SHA"; then
+            echo "::error::로컬 검수 verdict=fail — findings 해소 후 /dms-review $PR 재실행"
+            exit 1
+          else
+            echo "::error::현재 head($HEAD_SHA)에 대한 로컬 검수 기록 없음 — 로컬에서 /dms-review $PR 실행 (새 커밋마다 재검 필요). 정본: docs/policy/20-review-policy.md §6"
+            exit 1
+          fi
+
+      - name: 에이전트 검수 (CI 모드 — fresh 컨텍스트, 구현 세션과 구조적으로 분리)
         id: review
         if: >-
+          steps.mode.outputs.mode == 'ci' &&
           steps.checks.outputs.fork != 'true' &&
           steps.checklist.outputs.found == 'true'
         continue-on-error: true
@@ -68,13 +106,16 @@ jobs:
             head SHA ${{ github.event.pull_request.head.sha }}, 이 run의 URL 포함),
             구조화 출력으로 verdict를 반환하라. blocking finding이 하나라도 있으면 verdict는 fail이다.
 
-      - name: verdict 판정 (T0·T1 차단, T2는 자문)
+      - name: verdict 판정 (CI 모드 한정 — T0·T1 차단, T2는 자문)
         env:
           TIER: ${{ steps.checks.outputs.tier }}
           FORK: ${{ steps.checks.outputs.fork }}
           REVIEW_OUTCOME: ${{ steps.review.outcome }}
           STRUCTURED: ${{ steps.review.outputs.structured_output }}
         run: |
+          if [ "${{ steps.mode.outputs.mode }}" != "ci" ]; then
+            exit 0   # 로컬 모드 — 위의 '로컬 검수 확인' 스텝이 판정 완료
+          fi
           if [ "$FORK" = "true" ]; then
             echo "::warning::fork PR — 에이전트 검수 없음. 사람 검토 필수."
             exit 0

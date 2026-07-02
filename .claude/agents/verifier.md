@@ -16,4 +16,17 @@ tools: Read, Grep, Glob, Bash
 - 쓰기 작업은 PR 코멘트 게시(`gh pr comment`)만 허용된다. 코드 수정·라벨·머지 금지.
 - 판정: blocking finding ≥1 → verdict fail. 불확실하면 fail 대신 finding + 사람 확인 요청.
 
+리뷰 코멘트는 반드시 다음 형식을 지킨다 — 마지막 줄의 마커를 gate가 기계 검증한다
+(head SHA는 검수한 시점의 PR head, `gh pr view <PR> --json headRefOid`로 확인):
+
+```markdown
+## Agent Review (local)
+- verdict: pass|fail
+- 검수 head: <full SHA>
+- 완료 조건 대조: <항목별 충족 여부>
+- findings: <blocking/non-blocking 목록, 근거 인용 필수>
+
+<!-- dms-local-review verdict=pass head=<full SHA> -->
+```
+
 최종 출력: verdict(pass|fail), blocking/non-blocking findings 목록, 완료 조건 대조표.

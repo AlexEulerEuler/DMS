@@ -5,6 +5,7 @@ Development Management System — 에이전트 위임 개발을 위한 git-nativ
 **정본 원칙 (ADR-0002)**: 작업 상태의 정본은 GitHub(이슈·PR·커밋), 정의·정책의 정본은 리포 문서,
 대시보드는 읽기 전용 투영이다. 개발자(사람/에이전트)에게 필요한 것은 `git clone` + `gh` CLI + 코딩 에이전트뿐이다.
 
+- **사용 가이드: [docs/guide.md](docs/guide.md)** — 일상 사용법 한 장 요약
 - 에이전트 진입점: [AGENTS.md](AGENTS.md) · 문서 지도: [docs/README.md](docs/README.md)
 - 작업 절차 정본: [docs/policy/10-dev-workflow.md](docs/policy/10-dev-workflow.md)
 - 전환 결정 기록: [docs/decisions/0002-git-native-agent-workflow.md](docs/decisions/0002-git-native-agent-workflow.md)

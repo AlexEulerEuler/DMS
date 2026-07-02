@@ -34,6 +34,7 @@ jobs:
         id: checks
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          DMS_AUTOPILOT: ${{ vars.DMS_AUTOPILOT }}
         run: node scripts/gate-checks.mjs
 
       - name: 검수 체크리스트를 base 브랜치에서 로드 (인젝션 방어 — PR head 버전 사용 금지)
@@ -139,10 +140,14 @@ jobs:
             fi
           fi
 
-      - name: T0 auto-merge 활성화
-        if: steps.checks.outputs.tier == 't0' && steps.checks.outputs.fork != 'true'
+      - name: "auto-merge 활성화 (T0 상시 · T1은 autopilot ON일 때 — T2는 어떤 모드에서도 금지)"
+        if: >-
+          steps.checks.outputs.fork != 'true' &&
+          (steps.checks.outputs.tier == 't0' ||
+           (steps.checks.outputs.tier == 't1' && steps.checks.outputs.autopilot == 'on'))
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          echo "auto-merge: tier=${{ steps.checks.outputs.tier }} autopilot=${{ steps.checks.outputs.autopilot }}"
           gh pr merge "${{ github.event.pull_request.number }}" --auto --squash --repo "$GITHUB_REPOSITORY" \
             || echo "::warning::auto-merge 활성화 실패 — 리포 설정(Allow auto-merge)과 보호 규칙을 확인 (docs/policy/30-ops-policy.md §1)"

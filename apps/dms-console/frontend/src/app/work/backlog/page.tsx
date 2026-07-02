@@ -3,45 +3,51 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { listWork } from "@/lib/api-client";
+import { errorMessage, listWork } from "@/lib/api-client";
 import { useAsyncData } from "@/lib/hooks";
-import { formatDateRange } from "@/lib/format";
-import type { WorkItem, WorkStatus } from "@/lib/types";
-import { WORK_STATUS_LABEL } from "@/lib/types";
+import type { GhIssue, WorkStage } from "@/lib/types";
+import { WORK_STAGE_LABEL } from "@/lib/types";
 
 import { PageHeader } from "@/components/PageHeader";
+import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
-import { StatusChip } from "@/components/Chips";
+import { PriorityChip } from "@/components/Chips";
 import { DataTable } from "@/components/DataTable";
 import type { Column } from "@/components/DataTable";
 import type { ListState } from "@/components/StateViews";
 import { SearchInput } from "@/components/SearchInput";
 import { StatusFilterSelect } from "@/components/StatusFilter";
 import { Pagination } from "@/components/Pagination";
-import { errorMessage } from "@/lib/api-client";
 
 const PAGE_SIZE = 25;
 
-const STATUS_OPTIONS: { value: WorkStatus; label: string }[] = [
-  { value: "planned", label: WORK_STATUS_LABEL.planned },
-  { value: "in_progress", label: WORK_STATUS_LABEL.in_progress },
-  { value: "review", label: WORK_STATUS_LABEL.review },
-  { value: "done", label: WORK_STATUS_LABEL.done },
-];
+const STAGE_OPTIONS: { value: WorkStage; label: string }[] = (
+  ["backlog", "todo", "in_progress", "review", "done", "blocked"] as WorkStage[]
+).map((stage) => ({ value: stage, label: WORK_STAGE_LABEL[stage] }));
+
+const STAGE_TONE: Record<WorkStage, "neutral" | "primary" | "success" | "warning" | "info"> = {
+  backlog: "neutral",
+  todo: "info",
+  in_progress: "success",
+  review: "primary",
+  done: "primary",
+  blocked: "warning",
+};
 
 export default function BacklogPage() {
   const router = useRouter();
-  const [status, setStatus] = useState<WorkStatus | "">("");
+  const [stage, setStage] = useState<WorkStage | "">("");
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
 
   const { state, reload } = useAsyncData(
-    () => listWork({ status: status || undefined, q: q || undefined, page, size: PAGE_SIZE }),
-    [status, q, page],
+    () => listWork({ stage: stage || undefined, q: q || undefined, page, size: PAGE_SIZE }),
+    [stage, q, page],
   );
 
   const total = state.status === "success" ? state.data.total : 0;
-  const rows: WorkItem[] = state.status === "success" ? state.data.items : [];
+  const rows: GhIssue[] = state.status === "success" ? state.data.items : [];
+  const syncNote = state.status === "success" ? state.data.syncNote : null;
 
   const tableState: ListState =
     state.status === "loading"
@@ -52,24 +58,37 @@ export default function BacklogPage() {
           ? "empty"
           : "populated";
 
-  const newWorkButton = (
-    <Button variant="primary" onClick={() => router.push("/work/new?from=/work/backlog")}>
-      작업 등록
-    </Button>
-  );
-
-  const columns: Column<WorkItem>[] = [
+  const columns: Column<GhIssue>[] = [
+    { key: "number", header: "#", width: 64, render: (row) => `#${row.number}` },
     { key: "title", header: "작업명", render: (row) => row.title },
-    { key: "owner", header: "담당", render: (row) => row.owner || "미지정" },
     {
-      key: "status",
-      header: "진행상태",
-      render: (row) => <StatusChip status={{ domain: "work", value: row.status ?? "planned" }} />,
+      key: "stage",
+      header: "단계",
+      width: 110,
+      render: (row) => (
+        <Badge tone={STAGE_TONE[row.stage]} size="sm">
+          {WORK_STAGE_LABEL[row.stage]}
+        </Badge>
+      ),
     },
     {
-      key: "schedule",
-      header: "진행 일정",
-      render: (row) => formatDateRange(row.startDate, row.endDate),
+      key: "priority",
+      header: "우선순위",
+      width: 96,
+      render: (row) => <PriorityChip priority={row.priority} size="sm" />,
+    },
+    {
+      key: "assignees",
+      header: "담당",
+      width: 140,
+      render: (row) =>
+        row.assignees.length > 0 ? row.assignees.join(", ") : <span style={{ color: "var(--color-text-muted)" }}>미지정</span>,
+    },
+    {
+      key: "taskId",
+      header: "계획",
+      width: 90,
+      render: (row) => row.taskId ?? <span style={{ color: "var(--color-text-muted)" }}>-</span>,
     },
   ];
 
@@ -77,28 +96,26 @@ export default function BacklogPage() {
     <div>
       <PageHeader
         title="Backlog"
-        description="개발자에게 할당할 작업 관리"
-        summary={`총 작업 수 ${total}`}
-        actions={newWorkButton}
+        description="GitHub 이슈에서 유도된 작업 목록 (읽기 전용 — 작업 등록·상태 변경은 GitHub에서)"
+        summary={`총 작업 수 ${total}${syncNote ? ` · ${syncNote}` : ""}`}
+        actions={
+          <Button variant="secondary" onClick={reload}>
+            새로고침
+          </Button>
+        }
       />
 
       <div
-        style={{
-          display: "flex",
-          gap: "var(--space-3)",
-          alignItems: "center",
-          marginBottom: "var(--space-4)",
-          flexWrap: "wrap",
-        }}
+        style={{ display: "flex", gap: "var(--space-3)", alignItems: "center", marginBottom: "var(--space-4)", flexWrap: "wrap" }}
       >
         <StatusFilterSelect
-          value={status}
-          options={STATUS_OPTIONS}
+          value={stage}
+          options={STAGE_OPTIONS}
           onChange={(value) => {
-            setStatus(value);
+            setStage(value);
             setPage(1);
           }}
-          allLabel="전체 상태"
+          allLabel="전체 단계"
         />
         <SearchInput
           value={q}
@@ -112,12 +129,11 @@ export default function BacklogPage() {
       <DataTable
         columns={columns}
         rows={rows}
-        getRowId={(row) => row.id}
-        onRowClick={(row) => router.push(`/work/${row.id}`)}
+        getRowId={(row) => String(row.number)}
+        onRowClick={(row) => router.push(`/work/${row.number}`)}
         state={tableState}
-        emptyTitle="등록된 작업이 없습니다"
-        emptyDescription="새 작업을 등록해 백로그를 채워 보세요."
-        emptyAction={newWorkButton}
+        emptyTitle="작업이 없습니다"
+        emptyDescription="type:* 라벨이 있는 GitHub 이슈가 작업으로 표시됩니다."
         onRetry={reload}
         errorDescription={state.status === "error" ? errorMessage(state.error) : undefined}
       />

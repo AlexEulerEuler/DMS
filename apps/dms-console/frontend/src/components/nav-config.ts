@@ -1,5 +1,5 @@
-/** Static nav structure (foundation.md §3-4). Not data-driven — the 6 primary
- * modules and their secondary items are fixed by spec. */
+/** Static nav structure. 6개 1차 모듈 골격은 유지하되(비개발자의 학습 연속성),
+ * 데이터 원천은 전부 GitHub·리포 문서다 (ADR-0002). */
 
 export interface PrimaryNavItem {
   key: string;
@@ -11,7 +11,6 @@ export interface SecondaryNavItem {
   key: string;
   label: string;
   to: string;
-  /** One-line doc description (Overview sub-docs render this in PageHeader). */
   description?: string;
 }
 
@@ -29,24 +28,16 @@ export const PRIMARY_NAV: PrimaryNavItem[] = [
   { key: "agents", label: "Agent", to: "/agents" },
 ];
 
-export const OVERVIEW_DOCS: SecondaryNavItem[] = [
-  { key: "overview", label: "프로젝트 개요", to: "/overview", description: "입력·출력·워크플로우 요약" },
-  { key: "glossary", label: "도메인 용어", to: "/overview/glossary", description: "콘솔 핵심 용어 정의" },
-  { key: "pipeline", label: "전체 파이프라인", to: "/overview/pipeline", description: "입력→처리→출력 단계 상세" },
-  { key: "modules", label: "서비스 모듈", to: "/overview/modules", description: "구성 모듈과 책임 범위" },
-  { key: "api", label: "API 엔드포인트", to: "/overview/api", description: "제공 API 목록·용도" },
-  { key: "cli", label: "CLI 명령어", to: "/overview/cli", description: "생성 실행 등 명령어 레퍼런스" },
-  { key: "folder-structure", label: "폴더 구조", to: "/overview/folder-structure", description: "코드·산출물 디렉터리 구조" },
-  { key: "data", label: "주요 데이터", to: "/overview/data", description: "생성 산출물 조회·다운로드" },
-  { key: "tech-stack", label: "기술 스택", to: "/overview/tech-stack", description: "사용 기술·의존성" },
-  { key: "env", label: "환경 변수", to: "/overview/env", description: "구동에 필요한 환경 변수" },
-  { key: "runbook", label: "실행 방법", to: "/overview/runbook", description: "로컬·운영 실행 절차" },
-  { key: "limitations", label: "알려진 한계", to: "/overview/limitations", description: "제약·미지원 사항" },
-];
-
 const SECONDARY_NAV: Record<string, SecondaryNavSection[]> = {
-  overview: [{ groupLabel: "프로젝트 문서", items: OVERVIEW_DOCS }],
-  task: [{ items: [{ key: "ia", label: "IA", to: "/task/ia" }] }],
+  overview: [
+    {
+      items: [
+        { key: "overview", label: "홈", to: "/overview", description: "진행 요약과 최근 활동" },
+        { key: "docs", label: "프로젝트 문서", to: "/overview/docs", description: "리포 문서 브라우저" },
+      ],
+    },
+  ],
+  task: [{ items: [{ key: "ia", label: "계획 트리", to: "/task/ia" }] }],
   wbs: [{ items: [{ key: "wbs", label: "진행현황", to: "/wbs" }] }],
   issues: [{ items: [{ key: "issues", label: "이슈 목록", to: "/issues" }] }],
   work: [
@@ -57,7 +48,7 @@ const SECONDARY_NAV: Record<string, SecondaryNavSection[]> = {
       ],
     },
   ],
-  agents: [{ items: [{ key: "agents", label: "에이전트 목록", to: "/agents" }] }],
+  agents: [{ items: [{ key: "agents", label: "활동", to: "/agents" }] }],
 };
 
 export function primaryKeyFromPathname(pathname: string): string {
